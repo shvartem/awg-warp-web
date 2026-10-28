@@ -1,7 +1,7 @@
 import appConfig from './config.js';
 import { generateKeyPair } from './lib/x25519.js';
 import {
-  DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName,
+  DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter,
   parseRegistration, buildConfig, validateSettings,
 } from './lib/warp.js';
 
@@ -76,13 +76,13 @@ function fillForm(s) {
 
 function buildStaticControls() {
   const sel = $('endpointHost');
-  for (const h of ENDPOINT_HOSTS) sel.add(new Option(h, h));
-  sel.add(new Option('Свой адрес…', CUSTOM));
+  for (const h of ENDPOINT_HOSTS) sel.add(new Option(`${hostNumber(h)}. ${h}`, h));
+  sel.add(new Option('0. Свой адрес…', CUSTOM));
 
   const ports = $('ports');
   for (const p of ENDPOINT_PORTS) {
     const label = document.createElement('label');
-    label.innerHTML = `<input type="radio" name="port" value="${p}"><span>${p}</span>`;
+    label.innerHTML = `<input type="radio" name="port" value="${p}"><span>${portLetter(p)}. ${p}</span>`;
     ports.append(label);
   }
 

@@ -72,12 +72,27 @@ export function resolveDns(s) {
 }
 
 // File name, also used by AmneziaWG/WireGuard apps as the tunnel name, which
-// they limit to 15 characters: warp_<dns>[_santa].conf, e.g. warp_adgf_santa.
+// they limit to 15 characters: warp_<dns>_<endpoint>[_s].conf.
+// <endpoint> = host number (1–10 from ENDPOINT_HOSTS, 0 = custom) + port letter
+// (a–d from ENDPOINT_PORTS). Longest: warp_adgf_10d_s.
 export function configFileName(reg, s) {
   const preset = DNS_PRESETS.find((p) => p.id === s.dnsPreset);
   const dns = preset ? preset.tag : 'own';
-  const santa = reg && reg.source === 'santa' ? '_santa' : '';
-  return `warp_${dns}${santa}.conf`;
+  const santa = reg && reg.source === 'santa' ? '_s' : '';
+  return `warp_${dns}_${endpointCode(s)}${santa}.conf`;
+}
+
+export function hostNumber(host) {
+  return ENDPOINT_HOSTS.indexOf(host) + 1; // 0 when custom
+}
+
+export function portLetter(port) {
+  const i = ENDPOINT_PORTS.indexOf(Number(port));
+  return i >= 0 ? String.fromCharCode(97 + i) : 'x';
+}
+
+export function endpointCode(s) {
+  return `${hostNumber(s.endpointHost)}${portLetter(s.endpointPort)}`;
 }
 
 // Maps a stored DNS string back to a preset id (for settings saved before presets existed).

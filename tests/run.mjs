@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { scalarMult, publicKeyFromPrivate, generateKeyPair, toBase64, fromBase64 } from '../site/lib/x25519.js';
-import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName } from '../site/lib/warp.js';
+import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName, ENDPOINT_HOSTS, ENDPOINT_PORTS } from '../site/lib/warp.js';
 
 const hex = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
 const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -163,16 +163,21 @@ test('every DNS preset belongs to a group, no duplicates', () => {
 test('config file name', () => {
   const santaReg = parseRegistration(santa);
   const localReg = parseRegistration(santa, 'OWN');
-  assert.equal(configFileName(santaReg, DEFAULT_SETTINGS), 'warp_cf_santa.conf');
-  assert.equal(configFileName(localReg, DEFAULT_SETTINGS), 'warp_cf.conf');
-  assert.equal(configFileName(localReg, { ...DEFAULT_SETTINGS, dnsPreset: 'custom' }), 'warp_own.conf');
-  assert.equal(configFileName(santaReg, { ...DEFAULT_SETTINGS, dnsPreset: 'adguard-family' }), 'warp_adgf_santa.conf');
-  const tags = new Set(DNS_PRESETS.map((p) => p.tag));
-  assert.equal(tags.size, DNS_PRESETS.length);
-  for (const p of [...DNS_PRESETS.map((x) => x.id), 'custom']) {
-    const name = configFileName(santaReg, { ...DEFAULT_SETTINGS, dnsPreset: p }).replace(/\.conf$/, '');
-    assert.match(name, /^[a-zA-Z0-9_=+.-]{1,15}$/, name); // WireGuard tunnel-name rule
-  }
+  // default endpoint 162.159.192.1 is #2 in the list, port 500 is "a"
+  assert.equal(configFileName(santaReg, DEFAULT_SETTINGS), 'warp_cf_2a_s.conf');
+  assert.equal(configFileName(localReg, DEFAULT_SETTINGS), 'warp_cf_2a.conf');
+  assert.equal(configFileName(localReg, { ...DEFAULT_SETTINGS, dnsPreset: 'custom' }), 'warp_own_2a.conf');
+  assert.equal(configFileName(santaReg, { ...DEFAULT_SETTINGS, dnsPreset: 'adguard-family', endpointHost: '188.114.96.81', endpointPort: 4500 }), 'warp_adgf_10d_s.conf');
+  assert.equal(configFileName(santaReg, { ...DEFAULT_SETTINGS, endpointHost: 'engage.cloudflareclient.com', endpointPort: 2408 }), 'warp_cf_1b_s.conf');
+  assert.equal(configFileName(santaReg, { ...DEFAULT_SETTINGS, endpointHost: '162.159.193.5', endpointPort: '1701' }), 'warp_cf_0c_s.conf');
+  assert.equal(new Set(DNS_PRESETS.map((p) => p.tag)).size, DNS_PRESETS.length);
+  // every combination satisfies the WireGuard tunnel-name rule
+  for (const dnsPreset of [...DNS_PRESETS.map((x) => x.id), 'custom'])
+    for (const endpointHost of [...ENDPOINT_HOSTS, '10.0.0.1'])
+      for (const endpointPort of ENDPOINT_PORTS) {
+        const name = configFileName(santaReg, { ...DEFAULT_SETTINGS, dnsPreset, endpointHost, endpointPort }).replace(/\.conf$/, '');
+        assert.match(name, /^[a-zA-Z0-9_=+.-]{1,15}$/, name);
+      }
 });
 
 console.log(`\n${passed} tests passed`);
