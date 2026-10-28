@@ -1,4 +1,3 @@
-import qrcode from './vendor/qrcode.mjs';
 import appConfig from './config.js';
 import { generateKeyPair } from './lib/x25519.js';
 import {
@@ -160,30 +159,8 @@ function render() {
   const parts = [src, `адрес ${registration.v4}`];
   if (registration.license) parts.push(`лицензия ${registration.license}`);
   $('result-meta').textContent = parts.join(', ');
-
-  renderQr(currentConfig);
 }
 
-function renderQr(text) {
-  const box = $('qr');
-  const cap = $('qr-caption');
-  box.classList.remove('empty');
-  try {
-    const qr = qrcode(0, 'L');
-    qr.addData(text, 'Byte');
-    qr.make();
-    // Beyond ~version 27 phone cameras struggle to read a code off a screen.
-    if (qr.getModuleCount() > 125) throw new Error('too dense');
-    box.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
-    box.querySelector('svg')?.setAttribute('role', 'img');
-    box.querySelector('svg')?.setAttribute('aria-label', 'QR-код конфигурации');
-    cap.textContent = 'Отсканируйте в AmneziaWG: «+» → «Сканировать QR»';
-  } catch {
-    box.classList.add('empty');
-    box.textContent = 'Конфиг с пакетом I1 слишком длинный: камера не прочитает такой QR-код.';
-    cap.textContent = 'Скачайте файл или отключите I1 в разделе «Обфускация».';
-  }
-}
 
 function configFile() {
   return new File([currentConfig], 'warp.conf', { type: 'text/plain' });

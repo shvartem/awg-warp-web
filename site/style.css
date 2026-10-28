@@ -129,11 +129,6 @@ button:disabled { opacity: 0.6; cursor: progress; }
 .result-head { margin-bottom: 1rem; }
 .meta { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.925rem; overflow-wrap: anywhere; }
 
-.sheet { display: grid; gap: 1rem; }
-@media (min-width: 640px) {
-  .sheet { grid-template-columns: minmax(0, 1fr) 200px; align-items: start; }
-}
-
 .config {
   margin: 0;
   padding: 1rem;
@@ -146,15 +141,6 @@ button:disabled { opacity: 0.6; cursor: progress; }
   overflow: auto;
 }
 
-.qr { margin: 0; display: grid; gap: 0.5rem; justify-items: center; }
-.qr-box {
-  width: 100%; max-width: 240px; aspect-ratio: 1;
-  background: #fff; border-radius: 10px; padding: 8px;
-  display: grid; place-items: center;
-}
-.qr-box svg { width: 100%; height: 100%; display: block; }
-.qr-box.empty { background: var(--code-bg); color: var(--muted); padding: 1rem; aspect-ratio: auto; min-height: 8rem; text-align: center; font-size: 0.875rem; }
-.qr figcaption { font-size: 0.85rem; color: var(--muted); text-align: center; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
 .actions button { flex: 1 1 10rem; }
