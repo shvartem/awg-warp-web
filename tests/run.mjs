@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { scalarMult, publicKeyFromPrivate, generateKeyPair, toBase64, fromBase64 } from '../site/lib/x25519.js';
-import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns } from '../site/lib/warp.js';
+import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName } from '../site/lib/warp.js';
 
 const hex = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
 const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -158,6 +158,21 @@ test('every DNS preset belongs to a group, no duplicates', () => {
   const groups = new Set(DNS_GROUPS.map((g) => g.id));
   assert.equal(new Set(DNS_PRESETS.map((p) => p.id)).size, DNS_PRESETS.length);
   for (const p of DNS_PRESETS) assert.ok(groups.has(p.group) && p.note, p.id);
+});
+
+test('config file name', () => {
+  const santaReg = parseRegistration(santa);
+  const localReg = parseRegistration(santa, 'OWN');
+  assert.equal(configFileName(santaReg, DEFAULT_SETTINGS), 'warp_cf_santa.conf');
+  assert.equal(configFileName(localReg, DEFAULT_SETTINGS), 'warp_cf.conf');
+  assert.equal(configFileName(localReg, { ...DEFAULT_SETTINGS, dnsPreset: 'custom' }), 'warp_own.conf');
+  assert.equal(configFileName(santaReg, { ...DEFAULT_SETTINGS, dnsPreset: 'adguard-family' }), 'warp_adgf_santa.conf');
+  const tags = new Set(DNS_PRESETS.map((p) => p.tag));
+  assert.equal(tags.size, DNS_PRESETS.length);
+  for (const p of [...DNS_PRESETS.map((x) => x.id), 'custom']) {
+    const name = configFileName(santaReg, { ...DEFAULT_SETTINGS, dnsPreset: p }).replace(/\.conf$/, '');
+    assert.match(name, /^[a-zA-Z0-9_=+.-]{1,15}$/, name); // WireGuard tunnel-name rule
+  }
 });
 
 console.log(`\n${passed} tests passed`);

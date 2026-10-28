@@ -1,7 +1,7 @@
 import appConfig from './config.js';
 import { generateKeyPair } from './lib/x25519.js';
 import {
-  DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns,
+  DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName,
   parseRegistration, buildConfig, validateSettings,
 } from './lib/warp.js';
 
@@ -184,11 +184,16 @@ function render() {
   const parts = [src, `адрес ${registration.v4}`];
   if (registration.license) parts.push(`лицензия ${registration.license}`);
   $('result-meta').textContent = parts.join(', ');
+  $('download').textContent = `Скачать ${fileName()}`;
 }
 
 
+function fileName() {
+  return configFileName(registration, readForm());
+}
+
 function configFile() {
-  return new File([currentConfig], 'warp.conf', { type: 'text/plain' });
+  return new File([currentConfig], fileName(), { type: 'text/plain' });
 }
 
 async function copyConfig() {
@@ -210,17 +215,18 @@ function downloadConfig() {
   const url = URL.createObjectURL(configFile());
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'warp.conf';
+  a.download = fileName();
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-  setStatus('Файл warp.conf скачан.', 'ok');
+  setStatus(`Файл ${a.download} скачан.`, 'ok');
 }
 
 async function shareConfig() {
   try {
-    await navigator.share({ files: [configFile()], title: 'warp.conf' });
+    const file = configFile();
+    await navigator.share({ files: [file], title: file.name });
   } catch (e) {
     if (e.name !== 'AbortError') setStatus('Не удалось отправить файл: ' + e.message, 'err');
   }
