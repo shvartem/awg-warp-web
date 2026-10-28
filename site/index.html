@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>WARP для AmneziaWG</title>
+  <meta name="description" content="Генератор конфигурации Cloudflare WARP для AmneziaWG: через сервер Santa или с ключом, созданным в браузере.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#eef1f4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151a21" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b3fc9'/%3E%3Cpath d='M8 20a8 8 0 0 1 16 0' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='21' r='2.5' fill='white'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="intro">
+      <h1>WARP для AmneziaWG</h1>
+      <p>Регистрирует бесплатный аккаунт Cloudflare WARP и собирает конфиг с обфускацией AmneziaWG. Конфиг подходит для приложений AmneziaWG и AmneziaVPN, а также для роутеров на OpenWrt.</p>
+    </header>
+
+    <section class="get" aria-labelledby="get-title">
+      <h2 id="get-title" class="visually-hidden">Получение конфига</h2>
+      <fieldset class="mode">
+        <legend>Где создать ключ</legend>
+        <label class="mode-option">
+          <input type="radio" name="mode" value="santa" checked>
+          <span class="mode-body">
+            <strong>Сервер Santa</strong>
+            <span>Работает без настройки. Приватный ключ создаёт сервер Santa, и у него остаётся копия.</span>
+          </span>
+        </label>
+        <label class="mode-option">
+          <input type="radio" name="mode" value="local">
+          <span class="mode-body">
+            <strong>Этот браузер</strong>
+            <span>Приватный ключ не покидает устройство, Cloudflare получает только публичный. Нужен свой прокси.</span>
+          </span>
+        </label>
+      </fieldset>
+
+      <button type="button" id="generate" class="primary">Получить конфиг</button>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="result" class="result" hidden aria-labelledby="result-title">
+      <div class="result-head">
+        <h2 id="result-title">Ваш конфиг</h2>
+        <p id="result-meta" class="meta"></p>
+      </div>
+      <div class="sheet">
+        <pre id="config" class="config" tabindex="0" aria-label="Текст конфигурации"></pre>
+        <figure class="qr">
+          <div id="qr" class="qr-box"></div>
+          <figcaption id="qr-caption"></figcaption>
+        </figure>
+      </div>
+      <div class="actions">
+        <button type="button" id="copy">Копировать</button>
+        <button type="button" id="download">Скачать warp.conf</button>
+        <button type="button" id="share" hidden>Отправить в приложение</button>
+      </div>
+      <p class="hint">Параметры ниже можно менять и после получения: конфиг пересобирается сразу, новая регистрация не нужна.</p>
+    </section>
+
+    <section class="settings" aria-label="Настройки">
+      <details id="endpoint-details" open>
+        <summary>Сервер Cloudflare (endpoint)</summary>
+        <div class="panel">
+          <p class="panel-note">Если туннель не подключается, попробуйте другой адрес или порт.</p>
+          <div class="field">
+            <label for="endpointHost">Адрес</label>
+            <select id="endpointHost"></select>
+          </div>
+          <div class="field" id="customHostField" hidden>
+            <label for="customHost">Свой адрес</label>
+            <input id="customHost" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="например, 162.159.193.5">
+          </div>
+          <fieldset class="ports">
+            <legend>Порт</legend>
+            <div id="ports" class="port-row"></div>
+          </fieldset>
+        </div>
+      </details>
+
+      <details>
+        <summary>Обфускация AmneziaWG</summary>
+        <div class="panel">
+          <p class="panel-note">Jc, Jmin и Jmax задают мусорные пакеты перед рукопожатием; S1, S2 и H1–H4 должны быть 0 и 1–4, иначе Cloudflare не поймёт трафик.</p>
+          <div class="grid" id="awg-grid"></div>
+          <label class="check">
+            <input type="checkbox" id="useI1">
+            <span>Добавить пакет I1, похожий на QUIC (нужен AmneziaWG 1.5 или новее)</span>
+          </label>
+          <div class="field" id="i1Field">
+            <label for="I1">I1</label>
+            <textarea id="I1" rows="4" spellcheck="false"></textarea>
+          </div>
+          <button type="button" id="reset" class="link">Вернуть значения по умолчанию</button>
+        </div>
+      </details>
+
+      <details>
+        <summary>Сеть</summary>
+        <div class="panel">
+          <div class="field">
+            <label for="dns">DNS</label>
+            <input id="dns" type="text" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="allowedIPs">Через туннель</label>
+            <input id="allowedIPs" type="text" spellcheck="false">
+          </div>
+          <div class="grid two">
+            <div class="field">
+              <label for="mtu">MTU</label>
+              <input id="mtu" type="number" inputmode="numeric">
+            </div>
+            <div class="field">
+              <label for="keepalive">Keepalive, с</label>
+              <input id="keepalive" type="number" inputmode="numeric">
+            </div>
+          </div>
+          <label class="check">
+            <input type="checkbox" id="ipv6">
+            <span>Использовать IPv6 в туннеле</span>
+          </label>
+        </div>
+      </details>
+
+      <details id="proxy-details">
+        <summary>Прокси</summary>
+        <div class="panel">
+          <p class="panel-note">Адрес вашего Cloudflare Worker из папки <code>worker</code>. Через него идут все запросы. Обычно адрес уже подставлен; меняйте, только если развернули свой Worker.</p>
+          <div class="field">
+            <label for="workerUrl">Адрес Worker</label>
+            <input id="workerUrl" type="url" inputmode="url" spellcheck="false" placeholder="https://имя.поддомен.workers.dev">
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <footer class="foot">
+      <p>Неофициальный инструмент, не связан с Cloudflare. Используя его, вы принимаете <a href="https://www.cloudflare.com/application/terms/" rel="noopener">условия WARP</a>.</p>
+    </footer>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

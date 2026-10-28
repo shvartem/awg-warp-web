@@ -1,0 +1,124 @@
+// node tests/run.mjs — no dependencies.
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
+import { scalarMult, publicKeyFromPrivate, generateKeyPair, toBase64, fromBase64 } from '../site/lib/x25519.js';
+import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey } from '../site/lib/warp.js';
+
+const hex = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
+const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+let passed = 0;
+const test = (name, fn) => { fn(); passed++; console.log('ok -', name); };
+
+// RFC 7748 §5.2
+test('X25519 vector 1', () => {
+  const out = scalarMult(
+    hex('a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4'),
+    hex('e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c'));
+  assert.equal(toHex(out), 'c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552');
+});
+test('X25519 vector 2', () => {
+  const out = scalarMult(
+    hex('4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d'),
+    hex('e5210f12786811d3f4b7959d0538ae2c31dbe7106fc03c3efc4cd549c715a493'));
+  assert.equal(toHex(out), '95cbde9476e8907d7aade45cb4b873f88b595a68799fa152e6f8f7647aac7957');
+});
+test('X25519 matches node:crypto on 300 random inputs', () => {
+  const b64u = (b) => Buffer.from(b).toString('base64url');
+  for (let i = 0; i < 300; i++) {
+    const k = crypto.randomBytes(32), u = crypto.randomBytes(32);
+    u[31] &= 127;
+    let ref;
+    try {
+      const priv = crypto.createPrivateKey({ key: { kty: 'OKP', crv: 'X25519', d: b64u(k), x: b64u(new Uint8Array(32)) }, format: 'jwk' });
+      const pub = crypto.createPublicKey({ key: { kty: 'OKP', crv: 'X25519', x: b64u(u) }, format: 'jwk' });
+      ref = Buffer.from(crypto.diffieHellman({ privateKey: priv, publicKey: pub })).toString('hex');
+    } catch { continue; } // low-order points rejected by OpenSSL
+    assert.equal(toHex(scalarMult(k, u)), ref);
+  }
+});
+// RFC 7748 §6.1 Diffie-Hellman
+test('X25519 public keys (Alice/Bob)', () => {
+  assert.equal(toHex(publicKeyFromPrivate(hex('77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a'))),
+    '8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a');
+  assert.equal(toHex(publicKeyFromPrivate(hex('5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb'))),
+    'de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f');
+});
+
+test('generated pair matches `wg pubkey` if available', () => {
+  const kp = generateKeyPair();
+  assert.ok(isValidWgKey(kp.privateKey) && isValidWgKey(kp.publicKey));
+  assert.equal(toBase64(publicKeyFromPrivate(fromBase64(kp.privateKey))), kp.publicKey);
+  try {
+    const wg = execFileSync('wg', ['pubkey'], { input: kp.privateKey + '\n' }).toString().trim();
+    assert.equal(wg, kp.publicKey);
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+  }
+});
+
+// Real response shape returned by the Santa generator
+const santa = {
+  result: {
+    id: '936c9be4-3e20-4350-a490-f6cd98b7c755', type: 'i',
+    key: 'IJzeNVFFuCqe0yq5Z59WvW21fy4dofTZixjZ3LJInkE=',
+    account: { license: 'amOM8376-P20M3bS6-3y2h4a1M', warp_plus: true },
+    config: {
+      client_id: 'yk7i',
+      peers: [{ public_key: 'bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=',
+        endpoint: { v4: '162.159.192.6:0', host: 'engage.cloudflareclient.com:2408', ports: [2408, 500, 1701, 4500] } }],
+      interface: { addresses: { v4: '172.16.0.2', v6: '2606:4700:110:838a:aca5:e9c5:cb06:c4f1' } },
+    },
+  },
+  success: true, errors: [],
+};
+
+test('parse Santa response', () => {
+  const r = parseRegistration(santa);
+  assert.equal(r.privateKey, santa.result.key);
+  assert.equal(r.peerPublicKey, 'bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=');
+  assert.equal(r.v4, '172.16.0.2');
+  assert.equal(r.source, 'santa');
+});
+
+test('parse Cloudflare response uses own private key', () => {
+  const r = parseRegistration(santa, 'OWNPRIV');
+  assert.equal(r.privateKey, 'OWNPRIV');
+  assert.equal(r.source, 'local');
+});
+
+test('error response is reported', () => {
+  assert.throws(() => parseRegistration({ success: false, errors: [{ message: 'Too many requests' }] }), /Too many requests/);
+});
+
+test('config layout with defaults', () => {
+  const conf = buildConfig(parseRegistration(santa), DEFAULT_SETTINGS);
+  assert.match(conf, /^\[Interface\]\nPrivateKey = IJzeNV/);
+  assert.match(conf, /\nJc = 120\nJmin = 23\nJmax = 911\n/);
+  assert.match(conf, /\nI1 = <b 0xc2000000011419fa/);
+  assert.match(conf, /\nAddress = 172\.16\.0\.2\/32, 2606:4700:110:838a:aca5:e9c5:cb06:c4f1\/128\n/);
+  assert.match(conf, /\nEndpoint = 162\.159\.192\.1:500\n/);
+  assert.match(conf, /\nPersistentKeepalive = 25\n$/);
+});
+
+test('IPv4-only and no I1', () => {
+  const conf = buildConfig(parseRegistration(santa), { ...DEFAULT_SETTINGS, ipv6: false, useI1: false, endpointHost: 'engage.cloudflareclient.com', endpointPort: 2408 });
+  assert.ok(!conf.includes('I1 ='));
+  assert.match(conf, /\nAddress = 172\.16\.0\.2\/32\n/);
+  assert.match(conf, /\nDNS = 1\.1\.1\.1, 1\.0\.0\.1\n/);
+  assert.match(conf, /\nAllowedIPs = 0\.0\.0\.0\/0\n/);
+  assert.match(conf, /\nEndpoint = engage\.cloudflareclient\.com:2408\n/);
+});
+
+test('IPv6 endpoint is bracketed', () => {
+  const conf = buildConfig(parseRegistration(santa), { ...DEFAULT_SETTINGS, endpointHost: '2606:4700:d0::a29f:c006' });
+  assert.match(conf, /Endpoint = \[2606:4700:d0::a29f:c006\]:500/);
+});
+
+test('validation', () => {
+  assert.deepEqual(validateSettings(DEFAULT_SETTINGS), []);
+  assert.ok(validateSettings({ ...DEFAULT_SETTINGS, Jmin: 1000, Jmax: 10 }).length > 0);
+  assert.ok(validateSettings({ ...DEFAULT_SETTINGS, I1: 'garbage' }).length > 0);
+});
+
+console.log(`\n${passed} tests passed`);

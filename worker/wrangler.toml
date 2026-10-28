@@ -1,0 +1,9 @@
+name = "awg-warp-proxy"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# Переменные задаются вне репозитория (панель Cloudflare или GitHub Actions):
+#   SANTA_URL        секрет: адрес генератора Santa
+#   ALLOWED_ORIGINS  адрес страницы, например https://user.github.io
+# keep_vars не даёт `wrangler deploy` удалить переменные, заданные в панели.
+keep_vars = true
