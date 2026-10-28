@@ -1,7 +1,7 @@
 import appConfig from './config.js';
 import { generateKeyPair } from './lib/x25519.js';
 import {
-  DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS, DNS_PRESETS, presetForDns,
+  DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns,
   parseRegistration, buildConfig, validateSettings,
 } from './lib/warp.js';
 
@@ -87,8 +87,16 @@ function buildStaticControls() {
   }
 
   const dnsSel = $('dnsPreset');
-  for (const p of DNS_PRESETS) dnsSel.add(new Option(p.name, p.id));
-  dnsSel.add(new Option('Свои серверы…', 'custom'));
+  for (const g of DNS_GROUPS) {
+    const og = document.createElement('optgroup');
+    og.label = g.name;
+    for (const p of DNS_PRESETS.filter((x) => x.group === g.id)) og.append(new Option(p.name, p.id));
+    dnsSel.append(og);
+  }
+  const own = document.createElement('optgroup');
+  own.label = 'Другое';
+  own.append(new Option('Свои серверы…', 'custom'));
+  dnsSel.append(own);
 
   const grid = $('awg-grid');
   for (const f of AWG_FIELDS) {

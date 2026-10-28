@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { scalarMult, publicKeyFromPrivate, generateKeyPair, toBase64, fromBase64 } from '../site/lib/x25519.js';
-import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_PRESETS, resolveDns, presetForDns } from '../site/lib/warp.js';
+import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns } from '../site/lib/warp.js';
 
 const hex = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
 const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -152,6 +152,12 @@ test('custom DNS used and validated', () => {
   assert.ok(validateSettings({ ...s, dns: 'https://dns.example/dns-query' }).some((e) => e.startsWith('DNS')));
   assert.ok(validateSettings({ ...s, dns: '300.1.1.1' }).some((e) => e.startsWith('DNS')));
   assert.deepEqual(validateSettings({ ...DEFAULT_SETTINGS, dnsPreset: 'quad9', dns: 'junk' }), []);
+});
+
+test('every DNS preset belongs to a group, no duplicates', () => {
+  const groups = new Set(DNS_GROUPS.map((g) => g.id));
+  assert.equal(new Set(DNS_PRESETS.map((p) => p.id)).size, DNS_PRESETS.length);
+  for (const p of DNS_PRESETS) assert.ok(groups.has(p.group) && p.note, p.id);
 });
 
 console.log(`\n${passed} tests passed`);

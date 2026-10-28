@@ -31,23 +31,38 @@ export const DEFAULT_SETTINGS = {
   ipv6: true,
 };
 
-// Public DNS resolvers offered in the UI. Order: primary v4, primary v6,
-// secondary v4, secondary v6 (IPv6 entries are dropped when IPv6 is off).
+// Public DNS resolvers offered in the UI, grouped by what they filter.
+// Server order: primary v4, primary v6, secondary v4, secondary v6
+// (IPv6 entries are dropped when IPv6 is off).
+export const DNS_GROUPS = [
+  { id: 'plain', name: 'Без фильтрации' },
+  { id: 'ads', name: 'Блокируют рекламу и трекеры' },
+  { id: 'security', name: 'Блокируют вредоносные сайты' },
+  { id: 'family', name: 'Детский фильтр: блокируют контент 18+' },
+];
+
 export const DNS_PRESETS = [
-  { id: 'cloudflare', name: 'Cloudflare', note: 'Без фильтрации. Быстрее всего внутри WARP.',
+  { id: 'cloudflare', group: 'plain', name: 'Cloudflare',
+    note: 'Ничего не блокирует. Самый быстрый внутри WARP: это тот же провайдер.',
     servers: ['1.1.1.1', '2606:4700:4700::1111', '1.0.0.1', '2606:4700:4700::1001'] },
-  { id: 'cloudflare-security', name: 'Cloudflare Security', note: 'Блокирует вредоносные и фишинговые сайты.',
-    servers: ['1.1.1.2', '2606:4700:4700::1112', '1.0.0.2', '2606:4700:4700::1002'] },
-  { id: 'cloudflare-family', name: 'Cloudflare Family', note: 'Блокирует вредоносные сайты и контент 18+.',
-    servers: ['1.1.1.3', '2606:4700:4700::1113', '1.0.0.3', '2606:4700:4700::1003'] },
-  { id: 'adguard', name: 'AdGuard', note: 'Блокирует рекламу и трекеры.',
-    servers: ['94.140.14.14', '2a10:50c0::ad1:ff', '94.140.15.15', '2a10:50c0::ad2:ff'] },
-  { id: 'adguard-family', name: 'AdGuard Family', note: 'Блокирует рекламу, трекеры и контент 18+, включает безопасный поиск.',
-    servers: ['94.140.14.15', '2a10:50c0::bad1:ff', '94.140.15.16', '2a10:50c0::bad2:ff'] },
-  { id: 'google', name: 'Google', note: 'Без фильтрации.',
+  { id: 'google', group: 'plain', name: 'Google',
+    note: 'Ничего не блокирует.',
     servers: ['8.8.8.8', '2001:4860:4860::8888', '8.8.4.4', '2001:4860:4860::8844'] },
-  { id: 'quad9', name: 'Quad9', note: 'Блокирует вредоносные сайты. Некоммерческий.',
+  { id: 'adguard', group: 'ads', name: 'AdGuard',
+    note: 'Убирает рекламу и трекеры во всех приложениях, блокирует фишинг. Иногда ломает сайты, которые не работают без рекламы.',
+    servers: ['94.140.14.14', '2a10:50c0::ad1:ff', '94.140.15.15', '2a10:50c0::ad2:ff'] },
+  { id: 'cloudflare-security', group: 'security', name: 'Cloudflare Security',
+    note: 'Блокирует вредоносные и фишинговые сайты. Рекламу не трогает.',
+    servers: ['1.1.1.2', '2606:4700:4700::1112', '1.0.0.2', '2606:4700:4700::1002'] },
+  { id: 'quad9', group: 'security', name: 'Quad9',
+    note: 'Блокирует вредоносные и фишинговые сайты. Некоммерческий сервис из Швейцарии.',
     servers: ['9.9.9.9', '2620:fe::fe', '149.112.112.112', '2620:fe::9'] },
+  { id: 'cloudflare-family', group: 'family', name: 'Cloudflare Family',
+    note: 'Блокирует контент 18+ и вредоносные сайты. Рекламу не трогает.',
+    servers: ['1.1.1.3', '2606:4700:4700::1113', '1.0.0.3', '2606:4700:4700::1003'] },
+  { id: 'adguard-family', group: 'family', name: 'AdGuard Family',
+    note: 'Блокирует контент 18+, рекламу и трекеры, включает безопасный поиск в Google, Bing и YouTube.',
+    servers: ['94.140.14.15', '2a10:50c0::bad1:ff', '94.140.15.16', '2a10:50c0::bad2:ff'] },
 ];
 
 // The DNS list actually written to the config.
