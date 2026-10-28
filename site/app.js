@@ -192,8 +192,11 @@ function fileName() {
   return configFileName(registration, readForm());
 }
 
-function configFile() {
-  return new File([currentConfig], fileName(), { type: 'text/plain' });
+// Download: application/octet-stream, otherwise mobile Chrome and Safari see a
+// text file and save it as *.conf.txt. Share: text/plain, because the Web Share
+// API on Android only accepts a whitelist of types, and the name is kept there.
+function configFile(type = 'application/octet-stream') {
+  return new File([currentConfig], fileName(), { type });
 }
 
 async function copyConfig() {
@@ -225,7 +228,7 @@ function downloadConfig() {
 
 async function shareConfig() {
   try {
-    const file = configFile();
+    const file = configFile('text/plain');
     await navigator.share({ files: [file], title: file.name });
   } catch (e) {
     if (e.name !== 'AbortError') setStatus('Не удалось отправить файл: ' + e.message, 'err');
