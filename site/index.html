@@ -100,8 +100,13 @@
         <summary>Сеть</summary>
         <div class="panel">
           <div class="field">
-            <label for="dns">DNS</label>
-            <input id="dns" type="text" spellcheck="false">
+            <label for="dnsPreset">DNS</label>
+            <select id="dnsPreset" aria-describedby="dnsNote"></select>
+            <p id="dnsNote" class="field-note"></p>
+          </div>
+          <div class="field" id="customDnsField" hidden>
+            <label for="dns">Свои DNS-серверы</label>
+            <input id="dns" type="text" spellcheck="false" autocomplete="off" placeholder="IP-адреса через запятую">
           </div>
           <div class="field">
             <label for="allowedIPs">Через туннель</label>

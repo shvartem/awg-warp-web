@@ -20,7 +20,8 @@ export const DEFAULT_I1 = '<b 0xc2000000011419fa4bb3599f336777de79f81ca9a8d80d91
 export const DEFAULT_SETTINGS = {
   ...DEFAULT_AWG,
   mtu: 1280,
-  dns: '1.1.1.1, 2606:4700:4700::1111, 1.0.0.1, 2606:4700:4700::1001',
+  dnsPreset: 'cloudflare',
+  dns: '1.1.1.1, 2606:4700:4700::1111, 1.0.0.1, 2606:4700:4700::1001', // used when dnsPreset = 'custom'
   allowedIPs: '0.0.0.0/0, ::/0',
   endpointHost: '162.159.192.1',
   endpointPort: 500,
@@ -29,6 +30,38 @@ export const DEFAULT_SETTINGS = {
   I1: DEFAULT_I1,
   ipv6: true,
 };
+
+// Public DNS resolvers offered in the UI. Order: primary v4, primary v6,
+// secondary v4, secondary v6 (IPv6 entries are dropped when IPv6 is off).
+export const DNS_PRESETS = [
+  { id: 'cloudflare', name: 'Cloudflare', note: 'Без фильтрации. Быстрее всего внутри WARP.',
+    servers: ['1.1.1.1', '2606:4700:4700::1111', '1.0.0.1', '2606:4700:4700::1001'] },
+  { id: 'cloudflare-security', name: 'Cloudflare Security', note: 'Блокирует вредоносные и фишинговые сайты.',
+    servers: ['1.1.1.2', '2606:4700:4700::1112', '1.0.0.2', '2606:4700:4700::1002'] },
+  { id: 'cloudflare-family', name: 'Cloudflare Family', note: 'Блокирует вредоносные сайты и контент 18+.',
+    servers: ['1.1.1.3', '2606:4700:4700::1113', '1.0.0.3', '2606:4700:4700::1003'] },
+  { id: 'adguard', name: 'AdGuard', note: 'Блокирует рекламу и трекеры.',
+    servers: ['94.140.14.14', '2a10:50c0::ad1:ff', '94.140.15.15', '2a10:50c0::ad2:ff'] },
+  { id: 'adguard-family', name: 'AdGuard Family', note: 'Блокирует рекламу, трекеры и контент 18+, включает безопасный поиск.',
+    servers: ['94.140.14.15', '2a10:50c0::bad1:ff', '94.140.15.16', '2a10:50c0::bad2:ff'] },
+  { id: 'google', name: 'Google', note: 'Без фильтрации.',
+    servers: ['8.8.8.8', '2001:4860:4860::8888', '8.8.4.4', '2001:4860:4860::8844'] },
+  { id: 'quad9', name: 'Quad9', note: 'Блокирует вредоносные сайты. Некоммерческий.',
+    servers: ['9.9.9.9', '2620:fe::fe', '149.112.112.112', '2620:fe::9'] },
+];
+
+// The DNS list actually written to the config.
+export function resolveDns(s) {
+  const preset = DNS_PRESETS.find((p) => p.id === s.dnsPreset);
+  return preset ? preset.servers.join(', ') : String(s.dns || '');
+}
+
+// Maps a stored DNS string back to a preset id (for settings saved before presets existed).
+export function presetForDns(dns) {
+  const norm = splitList(dns).join(',');
+  const p = DNS_PRESETS.find((x) => x.servers.join(',') === norm);
+  return p ? p.id : 'custom';
+}
 
 // Known Cloudflare WARP endpoints and the ports Cloudflare advertises.
 export const ENDPOINT_HOSTS = [
@@ -88,7 +121,7 @@ export function buildConfig(reg, s) {
   if (s.ipv6 && reg.v6) address.push(`${reg.v6}/128`);
 
   let allowed = s.allowedIPs;
-  let dns = s.dns;
+  let dns = resolveDns(s);
   if (!s.ipv6) {
     allowed = splitList(allowed).filter((x) => !x.includes(':')).join(', ') || '0.0.0.0/0';
     dns = splitList(dns).filter((x) => !x.includes(':')).join(', ') || '1.1.1.1';
@@ -144,8 +177,18 @@ export function validateSettings(s) {
   int('keepalive', 0, 65535);
   if (Number(s.Jmin) > Number(s.Jmax)) errs.push('Jmin не может быть больше Jmax');
   if (!String(s.endpointHost || '').trim()) errs.push('не указан адрес endpoint');
+  if (s.dnsPreset === 'custom' || !DNS_PRESETS.some((p) => p.id === s.dnsPreset)) {
+    const list = splitList(s.dns);
+    if (!list.length) errs.push('DNS: укажите хотя бы один адрес');
+    else if (list.some((x) => !isIp(x))) errs.push('DNS: только IP-адреса через запятую');
+  }
   if (s.useI1 && s.I1 && !/^<[^>]+>(\s*<[^>]+>)*$/.test(s.I1.trim())) errs.push('I1: ожидается формат вида <b 0x…>');
   return errs;
+}
+
+function isIp(x) {
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(x)) return x.split('.').every((o) => Number(o) <= 255);
+  return /^[0-9a-f:]+$/i.test(x) && x.includes(':') && (x.match(/::/g) || []).length <= 1;
 }
 
 export function isValidWgKey(b64) {

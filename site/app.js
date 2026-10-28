@@ -1,7 +1,7 @@
 import appConfig from './config.js';
 import { generateKeyPair } from './lib/x25519.js';
 import {
-  DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS,
+  DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS, DNS_PRESETS, presetForDns,
   parseRegistration, buildConfig, validateSettings,
 } from './lib/warp.js';
 
@@ -18,6 +18,7 @@ function loadSettings() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch { /* storage unavailable */ }
   const s = { ...DEFAULT_SETTINGS, mode: 'santa', ...saved };
+  if (saved.dns && !saved.dnsPreset) s.dnsPreset = presetForDns(saved.dns);
   if (!s.workerUrl) s.workerUrl = appConfig.workerUrl || '';
   return s;
 }
@@ -35,6 +36,7 @@ function readForm() {
     endpointPort: Number(document.querySelector('input[name="port"]:checked')?.value || 500),
     useI1: $('useI1').checked,
     I1: $('I1').value,
+    dnsPreset: $('dnsPreset').value,
     dns: $('dns').value.trim(),
     allowedIPs: $('allowedIPs').value.trim(),
     mtu: Number($('mtu').value),
@@ -62,7 +64,9 @@ function fillForm(s) {
   $('useI1').checked = s.useI1;
   $('I1').value = s.I1;
   $('i1Field').hidden = !s.useI1;
+  $('dnsPreset').value = s.dnsPreset;
   $('dns').value = s.dns;
+  updateDnsUi();
   $('allowedIPs').value = s.allowedIPs;
   $('mtu').value = s.mtu;
   $('keepalive').value = s.keepalive;
@@ -82,6 +86,10 @@ function buildStaticControls() {
     ports.append(label);
   }
 
+  const dnsSel = $('dnsPreset');
+  for (const p of DNS_PRESETS) dnsSel.add(new Option(p.name, p.id));
+  dnsSel.add(new Option('Свои серверы…', 'custom'));
+
   const grid = $('awg-grid');
   for (const f of AWG_FIELDS) {
     const div = document.createElement('div');
@@ -89,6 +97,15 @@ function buildStaticControls() {
     div.innerHTML = `<label for="${f}">${f}</label><input id="${f}" type="number" inputmode="numeric" min="0">`;
     grid.append(div);
   }
+}
+
+function updateDnsUi() {
+  const id = $('dnsPreset').value;
+  const preset = DNS_PRESETS.find((p) => p.id === id);
+  $('customDnsField').hidden = Boolean(preset);
+  $('dnsNote').textContent = preset
+    ? `${preset.note} ${preset.servers.filter((x) => !x.includes(':')).join(', ')}`
+    : 'Обычные IP-адреса через запятую. DoH и DoT в конфиге WireGuard не поддерживаются.';
 }
 
 // ---------- status ----------
@@ -239,6 +256,10 @@ function init() {
     if (custom) $('customHost').focus();
   });
   $('useI1').addEventListener('change', () => { $('i1Field').hidden = !$('useI1').checked; });
+  $('dnsPreset').addEventListener('change', () => {
+    updateDnsUi();
+    if ($('dnsPreset').value === 'custom') $('dns').focus();
+  });
   $('reset').addEventListener('click', () => {
     fillForm({ ...readForm(), ...pick(DEFAULT_SETTINGS, [...AWG_FIELDS, 'useI1', 'I1']) });
     onChange();

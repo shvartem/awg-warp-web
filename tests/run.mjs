@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { scalarMult, publicKeyFromPrivate, generateKeyPair, toBase64, fromBase64 } from '../site/lib/x25519.js';
-import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey } from '../site/lib/warp.js';
+import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_PRESETS, resolveDns, presetForDns } from '../site/lib/warp.js';
 
 const hex = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
 const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -119,6 +119,39 @@ test('validation', () => {
   assert.deepEqual(validateSettings(DEFAULT_SETTINGS), []);
   assert.ok(validateSettings({ ...DEFAULT_SETTINGS, Jmin: 1000, Jmax: 10 }).length > 0);
   assert.ok(validateSettings({ ...DEFAULT_SETTINGS, I1: 'garbage' }).length > 0);
+});
+
+test('default DNS preset matches previous default', () => {
+  assert.equal(resolveDns(DEFAULT_SETTINGS), DEFAULT_SETTINGS.dns);
+  assert.equal(presetForDns(DEFAULT_SETTINGS.dns), 'cloudflare');
+  assert.equal(presetForDns('1.1.1.1,  2606:4700:4700::1111,1.0.0.1, 2606:4700:4700::1001'), 'cloudflare');
+  assert.equal(presetForDns('1.1.1.1'), 'custom');
+});
+
+test('every DNS preset: 2 IPv4 + 2 IPv6, all valid', () => {
+  for (const p of DNS_PRESETS) {
+    assert.equal(p.servers.filter((x) => !x.includes(':')).length, 2, p.id);
+    assert.equal(p.servers.filter((x) => x.includes(':')).length, 2, p.id);
+    assert.deepEqual(validateSettings({ ...DEFAULT_SETTINGS, dnsPreset: 'custom', dns: p.servers.join(', ') }), [], p.id);
+  }
+});
+
+test('AdGuard preset in config, IPv6 dropped when off', () => {
+  const reg = parseRegistration(santa);
+  assert.match(buildConfig(reg, { ...DEFAULT_SETTINGS, dnsPreset: 'adguard' }),
+    /\nDNS = 94\.140\.14\.14, 2a10:50c0::ad1:ff, 94\.140\.15\.15, 2a10:50c0::ad2:ff\n/);
+  assert.match(buildConfig(reg, { ...DEFAULT_SETTINGS, dnsPreset: 'adguard', ipv6: false }),
+    /\nDNS = 94\.140\.14\.14, 94\.140\.15\.15\n/);
+});
+
+test('custom DNS used and validated', () => {
+  const reg = parseRegistration(santa);
+  const s = { ...DEFAULT_SETTINGS, dnsPreset: 'custom', dns: '10.0.0.53' };
+  assert.match(buildConfig(reg, s), /\nDNS = 10\.0\.0\.53\n/);
+  assert.ok(validateSettings({ ...s, dns: '' }).some((e) => e.startsWith('DNS')));
+  assert.ok(validateSettings({ ...s, dns: 'https://dns.example/dns-query' }).some((e) => e.startsWith('DNS')));
+  assert.ok(validateSettings({ ...s, dns: '300.1.1.1' }).some((e) => e.startsWith('DNS')));
+  assert.deepEqual(validateSettings({ ...DEFAULT_SETTINGS, dnsPreset: 'quad9', dns: 'junk' }), []);
 });
 
 console.log(`\n${passed} tests passed`);
