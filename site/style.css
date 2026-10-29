@@ -148,6 +148,16 @@ button:disabled { opacity: 0.6; cursor: progress; }
 
 .hint { margin: 0.875rem 0 0; color: var(--muted); font-size: 0.875rem; }
 
+/* Batch of endpoint variants */
+.batch { margin-top: 1rem; background: var(--bg); }
+.batch fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.batch legend { font-size: 0.875rem; color: var(--muted); padding: 0; margin-bottom: 0.3rem; }
+.check-list { display: grid; gap: 0.15rem 1rem; grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr)); }
+.check-list label { display: flex; gap: 0.5rem; align-items: center; min-height: 36px; cursor: pointer; font-size: 0.925rem; overflow-wrap: anywhere; }
+.check-list input { width: 1.1rem; height: 1.1rem; margin: 0; accent-color: var(--accent); flex: none; }
+.batch-links { display: flex; gap: 1.25rem; margin-top: 0.4rem; font-size: 0.9rem; }
+.batch .actions { margin-top: 0.25rem; }
+
 /* Settings */
 .settings { margin-top: 2rem; display: grid; gap: 0.5rem; }
 
@@ -188,7 +198,7 @@ input:invalid, input.bad { border-color: var(--err); }
 .grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); }
 .grid.two { grid-template-columns: 1fr 1fr; }
 
-.ports { border: 0; margin: 0; padding: 0; }
+.ports { border: 0; margin: 0; padding: 0; min-width: 0; }
 .ports legend { padding: 0; margin-bottom: 0.3rem; }
 .port-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4rem; max-width: 26rem; }
 .port-row label {
@@ -197,8 +207,8 @@ input:invalid, input.bad { border-color: var(--err); }
 .port-row input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
 .port-row span {
   display: block; text-align: center; white-space: nowrap;
-  padding: 0.55rem 0.25rem; border: 1px solid var(--line); border-radius: 8px;
-  font-family: var(--mono); font-size: 0.9rem; background: var(--bg);
+  padding: 0.6rem 0; border: 1px solid var(--line); border-radius: 8px;
+  font-family: var(--mono); font-size: 0.8rem; background: var(--bg);
 }
 .port-row input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .port-row input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
@@ -210,6 +220,10 @@ code { font-family: var(--mono); font-size: 0.85em; }
 
 .foot { margin-top: 2.5rem; color: var(--muted); font-size: 0.85rem; }
 .foot a { color: inherit; }
+
+@media (max-width: 370px) {
+  .port-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }

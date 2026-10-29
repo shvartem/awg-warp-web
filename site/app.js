@@ -1,7 +1,8 @@
 import appConfig from './config.js';
 import { generateKeyPair } from './lib/x25519.js';
+import { createZip } from './lib/zip.js';
 import {
-  DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter,
+  DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName,
   parseRegistration, buildConfig, validateSettings,
 } from './lib/warp.js';
 
@@ -43,6 +44,8 @@ function readForm() {
     keepalive: Number($('keepalive').value),
     ipv6: $('ipv6').checked,
     workerUrl: $('workerUrl').value.trim().replace(/\/+$/, ''),
+    batchHosts: batchState.hosts,
+    batchPorts: batchState.ports,
   };
   for (const f of AWG_FIELDS) s[f] = Number($(f).value);
   return s;
@@ -86,6 +89,19 @@ function buildStaticControls() {
     ports.append(label);
   }
 
+  const bh = $('batchHosts');
+  for (const h of ENDPOINT_HOSTS) {
+    const label = document.createElement('label');
+    label.innerHTML = `<input type="checkbox" name="batchHost" value="${h}"><span>${hostNumber(h)}. ${h}</span>`;
+    bh.append(label);
+  }
+  const bp = $('batchPorts');
+  for (const p of ENDPOINT_PORTS) {
+    const label = document.createElement('label');
+    label.innerHTML = `<input type="checkbox" name="batchPort" value="${p}"><span>${portLetter(p)}. ${p}</span>`;
+    bp.append(label);
+  }
+
   const dnsSel = $('dnsPreset');
   for (const g of DNS_GROUPS) {
     const og = document.createElement('optgroup');
@@ -114,6 +130,72 @@ function updateDnsUi() {
   $('dnsNote').textContent = preset
     ? `${preset.note} ${preset.servers.filter((x) => !x.includes(':')).join(', ')}`
     : 'Обычные IP-адреса через запятую. DoH и DoT в конфиге WireGuard не поддерживаются.';
+}
+
+// ---------- batch of endpoint variants ----------
+let batchState = { hosts: [...ENDPOINT_HOSTS], ports: [] };
+
+function loadBatch(s) {
+  const hosts = Array.isArray(s.batchHosts) ? s.batchHosts.filter((h) => ENDPOINT_HOSTS.includes(h)) : [...ENDPOINT_HOSTS];
+  const ports = Array.isArray(s.batchPorts) ? s.batchPorts.map(Number).filter((p) => ENDPOINT_PORTS.includes(p)) : [Number(s.endpointPort) || 500];
+  batchState = { hosts, ports };
+  for (const el of document.querySelectorAll('input[name="batchHost"]')) el.checked = hosts.includes(el.value);
+  for (const el of document.querySelectorAll('input[name="batchPort"]')) el.checked = ports.includes(Number(el.value));
+}
+
+function readBatch() {
+  batchState = {
+    hosts: [...document.querySelectorAll('input[name="batchHost"]:checked')].map((el) => el.value),
+    ports: [...document.querySelectorAll('input[name="batchPort"]:checked')].map((el) => Number(el.value)),
+  };
+  return batchState;
+}
+
+function updateBatchUi() {
+  const { hosts, ports } = readBatch();
+  const n = hosts.length * ports.length;
+  const files = n === 1 ? 'файл' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'файла' : 'файлов';
+  $('batchDownload').textContent = n ? `Скачать набор: ${n} ${files}` : 'Отметьте адрес и порт';
+  $('batchDownload').disabled = n === 0;
+  $('batchShare').disabled = n === 0;
+}
+
+function batchZip() {
+  const s = readForm();
+  const { hosts, ports } = readBatch();
+  const files = batchConfigs(registration, s, hosts, ports);
+  const name = batchArchiveName(registration, s);
+  return new File([createZip(files.map((f) => ({ name: f.name, data: f.text })))], name, { type: 'application/zip' });
+}
+
+function downloadBatch() {
+  if (validateSettings(readForm()).length) return render();
+  const file = batchZip();
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  setStatus(`Архив ${file.name} скачан.`, 'ok');
+}
+
+async function shareBatch() {
+  if (validateSettings(readForm()).length) return render();
+  try {
+    const file = batchZip();
+    await navigator.share({ files: [file], title: file.name });
+  } catch (e) {
+    if (e.name !== 'AbortError') setStatus('Не удалось отправить архив: ' + e.message, 'err');
+  }
+}
+
+function onBatchChange() {
+  readBatch();
+  saveSettings(readForm());
+  updateBatchUi();
 }
 
 // ---------- status ----------
@@ -257,10 +339,28 @@ async function generate() {
 
 function init() {
   buildStaticControls();
-  fillForm(loadSettings());
+  const initial = loadSettings();
+  fillForm(initial);
+  loadBatch(initial);
+  updateBatchUi();
 
-  const canShare = !!(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.conf', { type: 'text/plain' })] }));
-  $('share').hidden = !canShare;
+  const canShareFile = (name, type) => {
+    try { return !!(navigator.canShare && navigator.canShare({ files: [new File(['x'], name, { type })] })); } catch { return false; }
+  };
+  $('share').hidden = !canShareFile('x.conf', 'text/plain');
+  $('batchShare').hidden = !canShareFile('x.zip', 'application/zip');
+
+  $('batch').addEventListener('change', onBatchChange);
+  $('batchDownload').addEventListener('click', downloadBatch);
+  $('batchShare').addEventListener('click', shareBatch);
+  $('batchAll').addEventListener('click', () => {
+    for (const el of document.querySelectorAll('input[name="batchHost"]')) el.checked = true;
+    onBatchChange();
+  });
+  $('batchNone').addEventListener('click', () => {
+    for (const el of document.querySelectorAll('input[name="batchHost"]')) el.checked = false;
+    onBatchChange();
+  });
 
   $('generate').addEventListener('click', generate);
   $('copy').addEventListener('click', copyConfig);

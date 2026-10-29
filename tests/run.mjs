@@ -2,8 +2,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
+import { writeFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createZip, crc32 } from '../site/lib/zip.js';
 import { scalarMult, publicKeyFromPrivate, generateKeyPair, toBase64, fromBase64 } from '../site/lib/x25519.js';
-import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName, ENDPOINT_HOSTS, ENDPOINT_PORTS } from '../site/lib/warp.js';
+import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName, ENDPOINT_HOSTS, ENDPOINT_PORTS, batchConfigs, batchArchiveName } from '../site/lib/warp.js';
 
 const hex = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
 const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -178,6 +182,43 @@ test('config file name', () => {
         const name = configFileName(santaReg, { ...DEFAULT_SETTINGS, dnsPreset, endpointHost, endpointPort }).replace(/\.conf$/, '');
         assert.match(name, /^[a-zA-Z0-9_=+.-]{1,15}$/, name);
       }
+});
+
+test('batch: one config per host × port, unique names', () => {
+  const reg = parseRegistration(santa);
+  const files = batchConfigs(reg, DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS);
+  assert.equal(files.length, 40);
+  assert.equal(new Set(files.map((f) => f.name)).size, 40);
+  const f = files.find((x) => x.name === 'warp_cf_3b_s.conf');
+  assert.match(f.text, /\nEndpoint = 162\.159\.192\.2:2408\n/);
+  assert.ok(files.every((x) => x.text.includes('PrivateKey = ' + reg.privateKey)));
+});
+
+test('batch archive name', () => {
+  assert.equal(batchArchiveName(parseRegistration(santa), DEFAULT_SETTINGS), 'warp_cf_s.zip');
+  assert.equal(batchArchiveName(parseRegistration(santa, 'OWN'), { ...DEFAULT_SETTINGS, dnsPreset: 'adguard-family', endpointHost: '188.114.96.81' }), 'warp_adgf.zip');
+});
+
+test('crc32 known value', () => {
+  assert.equal(crc32(new TextEncoder().encode('123456789')), 0xcbf43926);
+});
+
+test('zip is readable by Python zipfile', () => {
+  const files = batchConfigs(parseRegistration(santa), DEFAULT_SETTINGS, ENDPOINT_HOSTS.slice(0, 3), [500, 2408]);
+  const path = join(mkdtempSync(join(tmpdir(), 'zip-')), 'a.zip');
+  writeFileSync(path, createZip(files.map((f) => ({ name: f.name, data: f.text }))));
+  const py = `import zipfile,sys,json
+z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None
+print(json.dumps({n: z.read(n).decode() for n in z.namelist()}))`;
+  let out;
+  try {
+    out = JSON.parse(execFileSync('python3', ['-I', '-c', py, path]).toString());
+  } catch (e) {
+    if (e.code === 'ENOENT') return; // no python: skip
+    throw e;
+  }
+  assert.deepEqual(Object.keys(out), files.map((f) => f.name));
+  for (const f of files) assert.equal(out[f.name], f.text);
 });
 
 console.log(`\n${passed} tests passed`);

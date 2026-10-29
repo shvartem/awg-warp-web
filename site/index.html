@@ -57,6 +57,29 @@
         <button type="button" id="share" hidden>Отправить в приложение</button>
       </div>
       <p class="hint">Параметры ниже можно менять и после получения: конфиг пересобирается сразу, новая регистрация не нужна.</p>
+
+      <details id="batch" class="batch">
+        <summary>Набор для перебора endpoint</summary>
+        <div class="panel">
+          <p class="panel-note">Отдельный конфиг на каждый отмеченный адрес и порт, все с этим же ключом, в одном zip-архиве. AmneziaWG импортирует архив целиком. Включайте туннели по очереди: по имени файла видно, какой вариант сработал.</p>
+          <fieldset class="batch-hosts">
+            <legend>Адреса</legend>
+            <div id="batchHosts" class="check-list"></div>
+            <div class="batch-links">
+              <button type="button" class="link" id="batchAll">Отметить все</button>
+              <button type="button" class="link" id="batchNone">Снять все</button>
+            </div>
+          </fieldset>
+          <fieldset class="ports">
+            <legend>Порты</legend>
+            <div id="batchPorts" class="port-row"></div>
+          </fieldset>
+          <div class="actions">
+            <button type="button" id="batchDownload">Скачать набор</button>
+            <button type="button" id="batchShare" hidden>Отправить набор</button>
+          </div>
+        </div>
+      </details>
     </section>
 
     <section class="settings" aria-label="Настройки">

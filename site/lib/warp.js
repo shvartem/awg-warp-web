@@ -82,6 +82,22 @@ export function configFileName(reg, s) {
   return `warp_${dns}_${endpointCode(s)}${santa}.conf`;
 }
 
+// One config per selected endpoint × port, all with the same key.
+export function batchConfigs(reg, s, hosts, ports) {
+  const out = [];
+  for (const endpointHost of hosts)
+    for (const endpointPort of ports) {
+      const v = { ...s, endpointHost, endpointPort: Number(endpointPort) };
+      out.push({ name: configFileName(reg, v), text: buildConfig(reg, v) });
+    }
+  return out;
+}
+
+// Archive name: warp_<dns>[_s].zip (no endpoint, it varies inside).
+export function batchArchiveName(reg, s) {
+  return configFileName(reg, s).replace(/_[0-9]+[a-z](?=(_s)?\.conf$)/, '').replace(/\.conf$/, '.zip');
+}
+
 export function hostNumber(host) {
   return ENDPOINT_HOSTS.indexOf(host) + 1; // 0 when custom
 }
