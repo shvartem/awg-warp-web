@@ -101,16 +101,17 @@ export function batchArchiveName(reg, s) {
   return configFileName(reg, s).replace(/_[0-9]+[a-z](?=(_s)?\.conf$)/, '').replace(/\.conf$/, '.zip');
 }
 
-// Hosts for several devices: the chosen one first, then the next hosts of the
-// list in a circle. Distinct hosts keep file (tunnel) names distinct.
-export function deviceHosts(firstHost, n) {
-  const out = [firstHost];
-  const start = ENDPOINT_HOSTS.indexOf(firstHost); // -1 for a custom host
-  for (let i = 1; out.length < n && i <= ENDPOINT_HOSTS.length; i++) {
-    const h = ENDPOINT_HOSTS[(start + i + ENDPOINT_HOSTS.length) % ENDPOINT_HOSTS.length];
-    if (!out.includes(h)) out.push(h);
+// Endpoints for several devices: distinct random hosts from the list and a
+// random port each. Distinct hosts keep file (tunnel) names distinct.
+const cryptoInt = (max) => crypto.getRandomValues(new Uint32Array(1))[0] % max;
+
+export function randomDeviceEndpoints(n, randomInt = cryptoInt) {
+  const hosts = [...ENDPOINT_HOSTS];
+  for (let i = hosts.length - 1; i > 0; i--) { // Fisher–Yates shuffle
+    const j = randomInt(i + 1);
+    [hosts[i], hosts[j]] = [hosts[j], hosts[i]];
   }
-  return out;
+  return hosts.slice(0, n).map((host) => ({ host, port: ENDPOINT_PORTS[randomInt(ENDPOINT_PORTS.length)] }));
 }
 
 export const MAX_DEVICES = 5;

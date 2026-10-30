@@ -139,6 +139,8 @@
         <summary>Сервер Cloudflare (endpoint)</summary>
         <div class="panel">
           <p class="panel-note">Если туннель не подключается, попробуйте другой адрес или порт. Номер адреса и буква порта попадают в имя файла: например, <code>warp_cf_3b_s</code> — адрес 3, порт b.</p>
+          <p id="endpointNote" class="field-note" hidden>Устройств несколько: у каждого свой адрес и порт, они выбраны случайно при регистрации и видны в имени файла.</p>
+          <div id="endpointChoice" class="endpoint-choice">
           <div class="field">
             <label for="endpointHost">Адрес</label>
             <select id="endpointHost"></select>
@@ -151,7 +153,7 @@
             <legend>Порт</legend>
             <div id="ports" class="port-row"></div>
           </fieldset>
-          <p id="portNote" class="field-note" hidden>У нескольких устройств порт у каждого свой, он выбран случайно при регистрации.</p>
+          </div>
         </div>
       </details>
 

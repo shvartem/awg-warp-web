@@ -195,7 +195,7 @@ button:disabled { opacity: 0.6; cursor: progress; }
 }
 .device-list input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .device-list input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
-.ports:disabled { opacity: 0.55; }
+.endpoint-choice { display: grid; gap: 0.875rem; }
 
 /* Batch of endpoint variants */
 .batch { margin-top: 1rem; background: var(--bg); }

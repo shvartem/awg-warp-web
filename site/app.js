@@ -3,7 +3,7 @@ import { generateKeyPair } from './lib/x25519.js';
 import { createZip } from './lib/zip.js';
 import { buildUci, isValidIfaceName, DEFAULT_OPENWRT } from './lib/openwrt.js';
 import {
-  DEFAULT_SETTINGS, ENDPOINT_HOSTS, parseConfigText, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName, deviceHosts, MAX_DEVICES,
+  DEFAULT_SETTINGS, ENDPOINT_HOSTS, parseConfigText, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName, randomDeviceEndpoints, MAX_DEVICES,
   parseRegistration, buildConfig, validateSettings,
 } from './lib/warp.js';
 
@@ -327,12 +327,11 @@ function renderDevices() {
   $('downloadAll').hidden = !multi;
   $('shareAll').hidden = !multi || !canShareZip;
   $('openwrt').hidden = multi;
-  $('ports').closest('fieldset').disabled = multi;
-  $('portNote').hidden = !multi;
+  $('endpointChoice').hidden = multi;
+  $('endpointNote').hidden = !multi;
   if (!multi) return;
   $('downloadAll').textContent = `Скачать все: ${registrations.length}`;
   const base = readForm();
-  const hosts = deviceHosts(base.endpointHost, registrations.length);
   const list = $('deviceList');
   list.replaceChildren(...registrations.map((reg, i) => {
     const label = document.createElement('label');
@@ -342,7 +341,7 @@ function renderDevices() {
     input.value = String(i);
     input.checked = i === selected;
     const span = document.createElement('span');
-    span.textContent = configFileName(reg, { ...base, endpointHost: hosts[i], endpointPort: reg.port }).replace(/\.conf$/, '');
+    span.textContent = configFileName(reg, { ...base, endpointHost: reg.host, endpointPort: reg.port }).replace(/\.conf$/, '');
     label.append(input, span);
     return label;
   }));
@@ -350,9 +349,8 @@ function renderDevices() {
 
 function allConfigsZip() {
   const base = readForm();
-  const hosts = deviceHosts(base.endpointHost, registrations.length);
-  const files = registrations.map((reg, i) => {
-    const s = { ...base, endpointHost: hosts[i], endpointPort: reg.port };
+  const files = registrations.map((reg) => {
+    const s = { ...base, endpointHost: reg.host, endpointPort: reg.port };
     return { name: configFileName(reg, s), data: buildConfig(reg, s) };
   });
   const name = batchArchiveName(registrations[0], base).replace(/\.zip$/, '_devices.zip');
@@ -410,12 +408,11 @@ async function copyUci() {
 }
 
 
-// Settings for the selected device: with several devices each gets the next
-// host in a circle and its own random port fixed at registration.
+// Settings for the selected device: with several devices each has its own
+// random host and port, fixed at registration.
 function effective(s = readForm()) {
   if (registrations.length < 2) return s;
-  const hosts = deviceHosts(s.endpointHost, registrations.length);
-  return { ...s, endpointHost: hosts[selected], endpointPort: registration.port };
+  return { ...s, endpointHost: registration.host, endpointPort: registration.port };
 }
 
 function fileName() {
@@ -493,8 +490,8 @@ async function generate() {
       }
       if (!got.length) throw failure;
       if (got.length > 1) {
-        const rnd = crypto.getRandomValues(new Uint32Array(got.length));
-        got.forEach((reg, i) => { reg.port = ENDPOINT_PORTS[rnd[i] % ENDPOINT_PORTS.length]; });
+        const eps = randomDeviceEndpoints(got.length);
+        got.forEach((reg, i) => { reg.host = eps[i].host; reg.port = eps[i].port; });
       }
       registrations = got;
       registration = got[0];
