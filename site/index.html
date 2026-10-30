@@ -99,6 +99,27 @@
           </div>
         </div>
       </details>
+
+      <details id="openwrt" class="batch">
+        <summary>Команды для роутера OpenWrt</summary>
+        <div class="panel">
+          <p class="panel-note">Создают интерфейс AmneziaWG, зону файрвола и пропуск трафика из LAN. Нужны пакеты <code>kmod-amneziawg</code>, <code>amneziawg-tools</code> и <code>luci-proto-amneziawg</code>. Скопируйте и выполните в SSH на роутере. Повторный запуск перезаписывает те же настройки.</p>
+          <div class="field">
+            <label for="owIface">Имя интерфейса</label>
+            <input id="owIface" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" maxlength="11">
+          </div>
+          <label class="check">
+            <input type="checkbox" id="owRouteAll">
+            <span>Весь трафик роутера через туннель
+              <span class="field-note check-note">Без галочки туннель только создаётся, а какой трафик в него направлять, решают podkop, pbr или ваши правила. DNS роутера не меняется.</span>
+            </span>
+          </label>
+          <pre id="uci" class="config" tabindex="0" aria-label="Команды для OpenWrt"></pre>
+          <div class="actions">
+            <button type="button" id="uciCopy">Копировать команды</button>
+          </div>
+        </div>
+      </details>
     </section>
 
     <section class="settings" aria-label="Настройки">

@@ -2,11 +2,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createZip, crc32 } from '../site/lib/zip.js';
 import { parseCidr, formatCidr, subtractCidrs, LAN_V4, LAN_V6 } from '../site/lib/cidr.js';
+import { buildUci, isValidIfaceName } from '../site/lib/openwrt.js';
 import { scalarMult, publicKeyFromPrivate, generateKeyPair, toBase64, fromBase64 } from '../site/lib/x25519.js';
 import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName, ENDPOINT_HOSTS, ENDPOINT_PORTS, batchConfigs, batchArchiveName, parseConfigText } from '../site/lib/warp.js';
 
@@ -353,6 +354,60 @@ test('AllowedIPs validation', () => {
   assert.ok(validateSettings({ ...DEFAULT_SETTINGS, allowedIPs: '' }).some((e) => e.includes('Через туннель')));
   assert.ok(validateSettings({ ...DEFAULT_SETTINGS, allowedIPs: '0.0.0.0/0, oops' }).some((e) => e.includes('oops')));
   assert.deepEqual(validateSettings({ ...DEFAULT_SETTINGS, allowedIPs: '1.1.1.1, 10.0.0.0/8, ::/0' }), []);
+});
+
+// Runs generated uci commands in a real sh with a fake `uci` that logs its args.
+function runUci(script) {
+  const stub = `uci() { printf '%s\\n' "$*" >> "$LOG"; }\n` + script.replace(/^\/etc\/init\.d\/(\w+) reload$/gm, 'echo "reload $1" >> "$LOG"');
+  const dir = mkdtempSync(join(tmpdir(), 'uci-'));
+  const log = join(dir, 'log');
+  writeFileSync(join(dir, 's.sh'), stub);
+  execFileSync('sh', ['-eu', join(dir, 's.sh')], { env: { ...process.env, LOG: log } });
+  return readFileSync(log, 'utf8').trim().split('\n');
+}
+
+test('openwrt: uci commands produce the right values', () => {
+  const reg = parseRegistration(santa);
+  const calls = runUci(buildUci(reg, { ...DEFAULT_SETTINGS, endpointHost: '188.114.96.23', endpointPort: 2408 }, { iface: 'awg10', routeAll: false }));
+  const has = (c) => assert.ok(calls.includes(c), c);
+  has('set network.awg10=interface');
+  has("set network.awg10.proto=amneziawg");
+  has('set network.awg10.private_key=' + reg.privateKey);
+  has('add_list network.awg10.addresses=172.16.0.2/32');
+  has('set network.awg10.awg_jc=120');
+  has('set network.awg10.awg_h4=4');
+  assert.ok(calls.find((c) => c.startsWith('set network.awg10.awg_i1=<b 0xc2000000011419fa')), 'I1 passed intact with spaces');
+  has('set network.awg10.nohostroute=1');
+  has('set network.awg10_peer=amneziawg_awg10');
+  has('set network.awg10_peer.public_key=' + reg.peerPublicKey);
+  has('set network.awg10_peer.endpoint_host=188.114.96.23');
+  has('set network.awg10_peer.endpoint_port=2408');
+  has('add_list network.awg10_peer.allowed_ips=0.0.0.0/0');
+  has('set network.awg10_peer.route_allowed_ips=0');
+  has('set firewall.awg10_fwd.dest=awg10');
+  assert.ok(!calls.some((c) => c.includes('family')), 'IPv6 on -> no family=ipv4');
+  assert.deepEqual(calls.slice(-4), ['commit network', 'commit firewall', 'reload network', 'reload firewall']);
+});
+
+test('openwrt: routeAll, no I1, IPv4 only, LAN excluded, IPv6 endpoint', () => {
+  const reg = parseRegistration(santa);
+  const s = { ...DEFAULT_SETTINGS, useI1: false, ipv6: false, excludeLan: true, endpointHost: '2606:4700:d0::a29f:c001', endpointPort: 500 };
+  const calls = runUci(buildUci(reg, s, { iface: 'warp', routeAll: true }));
+  assert.ok(!calls.some((c) => c.includes('awg_i1') || c.includes('nohostroute')));
+  assert.ok(calls.includes('set network.warp_peer.route_allowed_ips=1'));
+  assert.ok(calls.includes('set firewall.warp_zone.family=ipv4'));
+  assert.ok(calls.includes('set network.warp_peer.endpoint_host=2606:4700:d0::a29f:c001'));
+  assert.equal(calls.filter((c) => c.startsWith('add_list network.warp_peer.allowed_ips=')).length, 40);
+  assert.ok(!calls.some((c) => c.includes('addresses=2606')));
+});
+
+test('openwrt: quotes are escaped, bad names rejected', () => {
+  const reg = parseRegistration(santa);
+  const calls = runUci(buildUci(reg, { ...DEFAULT_SETTINGS, I1: "<b 0x01'; touch /tmp/pwned; '>" }, { iface: 'awg10', routeAll: false }));
+  assert.ok(calls.includes("set network.awg10.awg_i1=<b 0x01'; touch /tmp/pwned; '>"));
+  for (const bad of ['', 'Awg', '1awg', 'awg-10', 'abcdefghijkl', "a'b"]) assert.equal(isValidIfaceName(bad), false, bad);
+  assert.equal(isValidIfaceName('awg10'), true);
+  assert.throws(() => buildUci(reg, DEFAULT_SETTINGS, { iface: 'bad name', routeAll: false }), /имя интерфейса/);
 });
 
 console.log(`\n${passed} tests passed`);

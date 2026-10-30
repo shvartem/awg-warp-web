@@ -1,6 +1,7 @@
 import appConfig from './config.js';
 import { generateKeyPair } from './lib/x25519.js';
 import { createZip } from './lib/zip.js';
+import { buildUci, isValidIfaceName, DEFAULT_OPENWRT } from './lib/openwrt.js';
 import {
   DEFAULT_SETTINGS, ENDPOINT_HOSTS, parseConfigText, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName,
   parseRegistration, buildConfig, validateSettings,
@@ -41,6 +42,8 @@ function readForm() {
     dns: $('dns').value.trim(),
     allowedIPs: $('allowedIPs').value.trim(),
     excludeLan: $('excludeLan').checked,
+    owIface: $('owIface').value.trim(),
+    owRouteAll: $('owRouteAll').checked,
     mtu: Number($('mtu').value),
     keepalive: Number($('keepalive').value),
     ipv6: $('ipv6').checked,
@@ -74,6 +77,8 @@ function fillForm(s) {
   updateDnsUi();
   $('allowedIPs').value = s.allowedIPs;
   $('excludeLan').checked = Boolean(s.excludeLan);
+  $('owIface').value = s.owIface || DEFAULT_OPENWRT.iface;
+  $('owRouteAll').checked = Boolean(s.owRouteAll);
   $('mtu').value = s.mtu;
   $('keepalive').value = s.keepalive;
   $('ipv6').checked = s.ipv6;
@@ -301,6 +306,33 @@ function render() {
   if (registration.license) parts.push(`лицензия ${registration.license}`);
   $('result-meta').textContent = parts.join(', ');
   $('download').textContent = `Скачать ${fileName()}`;
+  renderUci(s);
+}
+
+function renderUci(s = readForm()) {
+  if (!registration) return;
+  const ok = isValidIfaceName(s.owIface);
+  $('owIface').classList.toggle('bad', !ok);
+  $('uciCopy').disabled = !ok;
+  $('uci').textContent = ok
+    ? buildUci(registration, s, { iface: s.owIface, routeAll: s.owRouteAll })
+    : 'Имя интерфейса: латинские строчные буквы, цифры и _, до 11 символов, начинается с буквы. Например, awg10.';
+}
+
+async function copyUci() {
+  const text = $('uci').textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const range = document.createRange();
+    range.selectNodeContents($('uci'));
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand('copy');
+    sel.removeAllRanges();
+  }
+  setStatus('Команды для OpenWrt скопированы.', 'ok');
 }
 
 
@@ -392,6 +424,10 @@ function init() {
   $('batchShare').hidden = !canShareFile('x.zip', 'application/zip');
 
   $('batch').addEventListener('change', onBatchChange);
+  const onOpenwrt = () => { saveSettings(readForm()); renderUci(); };
+  $('openwrt').addEventListener('input', onOpenwrt);
+  $('openwrt').addEventListener('change', onOpenwrt);
+  $('uciCopy').addEventListener('click', copyUci);
   $('batchDownload').addEventListener('click', downloadBatch);
   $('batchShare').addEventListener('click', shareBatch);
   $('batchAll').addEventListener('click', () => {

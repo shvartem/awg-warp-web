@@ -169,6 +169,8 @@ button:disabled { opacity: 0.6; cursor: progress; }
 .batch-links { display: flex; gap: 1.25rem; margin-top: 0.4rem; font-size: 0.9rem; }
 .batch .actions { margin-top: 0.25rem; }
 
+#uci { white-space: pre; word-break: normal; overflow-x: auto; max-width: 100%; min-width: 0; }
+
 /* Settings */
 .settings { margin-top: 2rem; display: grid; gap: 0.5rem; }
 
