@@ -9,7 +9,7 @@ import { createZip, crc32 } from '../site/lib/zip.js';
 import { parseCidr, formatCidr, subtractCidrs, LAN_V4, LAN_V6 } from '../site/lib/cidr.js';
 import { buildUci, isValidIfaceName } from '../site/lib/openwrt.js';
 import { scalarMult, publicKeyFromPrivate, generateKeyPair, toBase64, fromBase64 } from '../site/lib/x25519.js';
-import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName, ENDPOINT_HOSTS, ENDPOINT_PORTS, batchConfigs, batchArchiveName, parseConfigText } from '../site/lib/warp.js';
+import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName, ENDPOINT_HOSTS, ENDPOINT_PORTS, batchConfigs, batchArchiveName, parseConfigText, deviceHosts, MAX_DEVICES } from '../site/lib/warp.js';
 
 const hex = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
 const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -408,6 +408,28 @@ test('openwrt: quotes are escaped, bad names rejected', () => {
   for (const bad of ['', 'Awg', '1awg', 'awg-10', 'abcdefghijkl', "a'b"]) assert.equal(isValidIfaceName(bad), false, bad);
   assert.equal(isValidIfaceName('awg10'), true);
   assert.throws(() => buildUci(reg, DEFAULT_SETTINGS, { iface: 'bad name', routeAll: false }), /имя интерфейса/);
+});
+
+test('device hosts: chosen first, then the list in a circle, all distinct', () => {
+  assert.deepEqual(deviceHosts('162.159.192.1', 1), ['162.159.192.1']);
+  assert.deepEqual(deviceHosts('162.159.192.1', 3), ['162.159.192.1', '162.159.192.2', '162.159.192.4']);
+  assert.deepEqual(deviceHosts('188.114.96.81', 3), ['188.114.96.81', 'engage.cloudflareclient.com', '162.159.192.1']);
+  assert.deepEqual(deviceHosts('10.9.8.7', 3), ['10.9.8.7', 'engage.cloudflareclient.com', '162.159.192.1']);
+  for (const h of [...ENDPOINT_HOSTS, '10.9.8.7'])
+    for (let n = 1; n <= MAX_DEVICES; n++) {
+      const hs = deviceHosts(h, n);
+      assert.equal(hs.length, n);
+      assert.equal(new Set(hs).size, n);
+    }
+});
+
+test('device file names are distinct for any port mix', () => {
+  const reg = parseRegistration(santa);
+  for (const first of ENDPOINT_HOSTS) {
+    const hosts = deviceHosts(first, MAX_DEVICES);
+    const names = hosts.map((h, i) => configFileName(reg, { ...DEFAULT_SETTINGS, endpointHost: h, endpointPort: ENDPOINT_PORTS[i % 4] }));
+    assert.equal(new Set(names).size, MAX_DEVICES, names.join());
+  }
 });
 
 console.log(`\n${passed} tests passed`);

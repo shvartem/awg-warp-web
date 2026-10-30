@@ -101,6 +101,20 @@ export function batchArchiveName(reg, s) {
   return configFileName(reg, s).replace(/_[0-9]+[a-z](?=(_s)?\.conf$)/, '').replace(/\.conf$/, '.zip');
 }
 
+// Hosts for several devices: the chosen one first, then the next hosts of the
+// list in a circle. Distinct hosts keep file (tunnel) names distinct.
+export function deviceHosts(firstHost, n) {
+  const out = [firstHost];
+  const start = ENDPOINT_HOSTS.indexOf(firstHost); // -1 for a custom host
+  for (let i = 1; out.length < n && i <= ENDPOINT_HOSTS.length; i++) {
+    const h = ENDPOINT_HOSTS[(start + i + ENDPOINT_HOSTS.length) % ENDPOINT_HOSTS.length];
+    if (!out.includes(h)) out.push(h);
+  }
+  return out;
+}
+
+export const MAX_DEVICES = 5;
+
 export function hostNumber(host) {
   return ENDPOINT_HOSTS.indexOf(host) + 1; // 0 when custom
 }

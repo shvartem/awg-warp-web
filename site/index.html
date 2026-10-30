@@ -58,6 +58,14 @@
         </div>
       </div>
 
+      <div class="field device-count" id="deviceCountField">
+        <label for="deviceCount">Сколько устройств</label>
+        <select id="deviceCount">
+          <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option>
+        </select>
+        <p class="field-note">У каждого устройства будет свой ключ: один конфиг нельзя одновременно использовать на двух устройствах.</p>
+      </div>
+
       <button type="button" id="generate" class="primary">Получить конфиг</button>
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </section>
@@ -67,11 +75,17 @@
         <h2 id="result-title">Ваш конфиг</h2>
         <p id="result-meta" class="meta"></p>
       </div>
+      <fieldset id="devices" class="devices" hidden>
+        <legend>Устройство</legend>
+        <div id="deviceList" class="device-list"></div>
+      </fieldset>
       <pre id="config" class="config" tabindex="0" aria-label="Текст конфигурации"></pre>
       <div class="actions">
         <button type="button" id="copy">Копировать</button>
         <button type="button" id="download">Скачать файл</button>
         <button type="button" id="share" hidden>Отправить в приложение</button>
+        <button type="button" id="downloadAll" hidden>Скачать все</button>
+        <button type="button" id="shareAll" hidden>Отправить все</button>
       </div>
       <p class="hint">Параметры ниже можно менять и после получения: конфиг пересобирается сразу, новая регистрация не нужна.</p>
 
@@ -137,6 +151,7 @@
             <legend>Порт</legend>
             <div id="ports" class="port-row"></div>
           </fieldset>
+          <p id="portNote" class="field-note" hidden>У нескольких устройств порт у каждого свой, он выбран случайно при регистрации.</p>
         </div>
       </details>
 

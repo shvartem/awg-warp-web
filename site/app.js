@@ -3,7 +3,7 @@ import { generateKeyPair } from './lib/x25519.js';
 import { createZip } from './lib/zip.js';
 import { buildUci, isValidIfaceName, DEFAULT_OPENWRT } from './lib/openwrt.js';
 import {
-  DEFAULT_SETTINGS, ENDPOINT_HOSTS, parseConfigText, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName,
+  DEFAULT_SETTINGS, ENDPOINT_HOSTS, parseConfigText, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName, deviceHosts, MAX_DEVICES,
   parseRegistration, buildConfig, validateSettings,
 } from './lib/warp.js';
 
@@ -12,7 +12,10 @@ const STORE_KEY = 'warpgen.settings.v1';
 const CUSTOM = '__custom__';
 const AWG_FIELDS = ['Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'H1', 'H2', 'H3', 'H4'];
 
-let registration = null; // kept in memory only, never stored
+let registration = null; // selected device's registration; kept in memory only, never stored
+let registrations = []; // one per device, each with its own key (and port when several)
+let selected = 0;
+let canShareZip = false;
 let currentConfig = '';
 
 // ---------- settings ----------
@@ -45,6 +48,7 @@ function readForm() {
     allowedIPs: $('allowedIPs').value.trim(),
     excludeLan: $('excludeLan').checked,
     owIface: $('owIface').value.trim(),
+    deviceCount: Number($('deviceCount').value) || 1,
     owRouteAll: $('owRouteAll').checked,
     mtu: Number($('mtu').value),
     keepalive: Number($('keepalive').value),
@@ -80,6 +84,7 @@ function fillForm(s) {
   $('allowedIPs').value = s.allowedIPs;
   $('excludeLan').checked = Boolean(s.excludeLan);
   $('owIface').value = s.owIface || DEFAULT_OPENWRT.iface;
+  $('deviceCount').value = String(Math.min(Math.max(Number(s.deviceCount) || 1, 1), MAX_DEVICES));
   $('owRouteAll').checked = Boolean(s.owRouteAll);
   $('mtu').value = s.mtu;
   $('keepalive').value = s.keepalive;
@@ -146,7 +151,9 @@ function updateDnsUi() {
 function updateModeUi() {
   const mode = document.querySelector('input[name="mode"]:checked').value;
   $('importPanel').hidden = mode !== 'import';
-  $('generate').textContent = mode === 'import' ? 'Открыть конфиг' : 'Получить конфиг';
+  $('deviceCountField').hidden = mode === 'import';
+  const n = Number($('deviceCount').value) || 1;
+  $('generate').textContent = mode === 'import' ? 'Открыть конфиг' : n > 1 ? `Получить конфиги: ${n}` : 'Получить конфиг';
 }
 
 function importConfig() {
@@ -199,7 +206,7 @@ function updateBatchUi() {
 }
 
 function batchZip() {
-  const s = readForm();
+  const s = effective();
   const { hosts, ports } = readBatch();
   const files = batchConfigs(registration, s, hosts, ports);
   const name = batchArchiveName(registration, s);
@@ -294,7 +301,7 @@ async function registerLocally(workerUrl) {
 // ---------- output ----------
 function render() {
   if (!registration) return;
-  const s = readForm();
+  const s = effective();
   const errs = validateSettings(s);
   if (errs.length) {
     setStatus('Проверьте параметры: ' + errs.join('; '), 'err');
@@ -304,11 +311,76 @@ function render() {
   $('config').textContent = currentConfig;
 
   const src = { local: 'ключ создан в этом браузере', import: 'ключ из вашего конфига', santa: 'ключ создан сервером Santa' }[registration.source];
-  const parts = [src, `адрес ${registration.v4}`];
+  const multi = registrations.length > 1;
+  const parts = [multi ? `устройство ${selected + 1} из ${registrations.length}, ${src}` : src, `адрес ${registration.v4}`];
   if (registration.license) parts.push(`лицензия ${registration.license}`);
   $('result-meta').textContent = parts.join(', ');
   $('download').textContent = `Скачать ${fileName()}`;
-  renderUci(s);
+  renderDevices();
+  if (!multi) renderUci(s);
+}
+
+function renderDevices() {
+  const multi = registrations.length > 1;
+  $('result-title').textContent = multi ? 'Ваши конфиги' : 'Ваш конфиг';
+  $('devices').hidden = !multi;
+  $('downloadAll').hidden = !multi;
+  $('shareAll').hidden = !multi || !canShareZip;
+  $('openwrt').hidden = multi;
+  $('ports').closest('fieldset').disabled = multi;
+  $('portNote').hidden = !multi;
+  if (!multi) return;
+  $('downloadAll').textContent = `Скачать все: ${registrations.length}`;
+  const base = readForm();
+  const hosts = deviceHosts(base.endpointHost, registrations.length);
+  const list = $('deviceList');
+  list.replaceChildren(...registrations.map((reg, i) => {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'device';
+    input.value = String(i);
+    input.checked = i === selected;
+    const span = document.createElement('span');
+    span.textContent = configFileName(reg, { ...base, endpointHost: hosts[i], endpointPort: reg.port }).replace(/\.conf$/, '');
+    label.append(input, span);
+    return label;
+  }));
+}
+
+function allConfigsZip() {
+  const base = readForm();
+  const hosts = deviceHosts(base.endpointHost, registrations.length);
+  const files = registrations.map((reg, i) => {
+    const s = { ...base, endpointHost: hosts[i], endpointPort: reg.port };
+    return { name: configFileName(reg, s), data: buildConfig(reg, s) };
+  });
+  const name = batchArchiveName(registrations[0], base).replace(/\.zip$/, '_devices.zip');
+  return new File([createZip(files)], name, { type: 'application/zip' });
+}
+
+function downloadAll() {
+  if (validateSettings(effective()).length) return render();
+  const file = allConfigsZip();
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  setStatus(`Архив ${file.name} скачан.`, 'ok');
+}
+
+async function shareAll() {
+  if (validateSettings(effective()).length) return render();
+  try {
+    const file = allConfigsZip();
+    await navigator.share({ files: [file], title: file.name });
+  } catch (e) {
+    if (e.name !== 'AbortError') setStatus('Не удалось отправить архив: ' + e.message, 'err');
+  }
 }
 
 function renderUci(s = readForm()) {
@@ -338,8 +410,16 @@ async function copyUci() {
 }
 
 
+// Settings for the selected device: with several devices each gets the next
+// host in a circle and its own random port fixed at registration.
+function effective(s = readForm()) {
+  if (registrations.length < 2) return s;
+  const hosts = deviceHosts(s.endpointHost, registrations.length);
+  return { ...s, endpointHost: hosts[selected], endpointPort: registration.port };
+}
+
 function fileName() {
-  return configFileName(registration, readForm());
+  return configFileName(registration, effective());
 }
 
 // Download: application/octet-stream, otherwise mobile Chrome and Safari see a
@@ -397,12 +477,34 @@ async function generate() {
       const { reg, notes } = importConfig();
       registration = reg;
       done = 'Конфиг открыт. Меняйте параметры ниже, ключ останется прежним.' + (notes.length ? ` Обратите внимание: ${notes.join('; ')}.` : '');
+      registrations = [reg];
     } else {
-      registration = s.mode === 'local' ? await registerLocally(s.workerUrl) : await registerViaSanta(s.workerUrl);
+      const n = Math.min(Math.max(s.deviceCount || 1, 1), MAX_DEVICES);
+      const got = [];
+      let failure = null;
+      for (let i = 0; i < n; i++) {
+        if (n > 1) setStatus(`Регистрирую устройство ${i + 1} из ${n}…`);
+        try {
+          got.push(s.mode === 'local' ? await registerLocally(s.workerUrl) : await registerViaSanta(s.workerUrl));
+        } catch (e) {
+          failure = e;
+          break;
+        }
+      }
+      if (!got.length) throw failure;
+      if (got.length > 1) {
+        const rnd = crypto.getRandomValues(new Uint32Array(got.length));
+        got.forEach((reg, i) => { reg.port = ENDPOINT_PORTS[rnd[i] % ENDPOINT_PORTS.length]; });
+      }
+      registrations = got;
+      registration = got[0];
+      if (n > 1) done = `Готово. Зарегистрировано устройств: ${got.length}.`;
+      if (failure) done = `Получено ${got.length} из ${n}: ${failure.message}`;
     }
+    selected = 0;
     $('result').hidden = false;
     render();
-    setStatus(done, 'ok');
+    setStatus(done, done.startsWith('Получено') ? 'err' : 'ok');
     $('result').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
   } catch (e) {
     setStatus(e.message || String(e), 'err');
@@ -424,9 +526,18 @@ function init() {
     try { return !!(navigator.canShare && navigator.canShare({ files: [new File(['x'], name, { type })] })); } catch { return false; }
   };
   $('share').hidden = !canShareFile('x.conf', 'text/plain');
-  $('batchShare').hidden = !canShareFile('x.zip', 'application/zip');
+  canShareZip = canShareFile('x.zip', 'application/zip');
+  $('batchShare').hidden = !canShareZip;
 
   $('batch').addEventListener('change', onBatchChange);
+  $('deviceCount').addEventListener('change', () => { updateModeUi(); saveSettings(readForm()); });
+  $('deviceList').addEventListener('change', (e) => {
+    selected = Number(e.target.value) || 0;
+    registration = registrations[selected];
+    render();
+  });
+  $('downloadAll').addEventListener('click', downloadAll);
+  $('shareAll').addEventListener('click', shareAll);
   const onOpenwrt = () => { saveSettings(readForm()); renderUci(); };
   $('openwrt').addEventListener('input', onOpenwrt);
   $('openwrt').addEventListener('change', onOpenwrt);
