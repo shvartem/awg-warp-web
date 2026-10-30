@@ -21,7 +21,9 @@ function loadSettings() {
   try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch { /* storage unavailable */ }
   const s = { ...DEFAULT_SETTINGS, mode: 'santa', ...saved };
   if (saved.dns && !saved.dnsPreset) s.dnsPreset = presetForDns(saved.dns);
-  if (!s.workerUrl) s.workerUrl = appConfig.workerUrl || '';
+  // On the published site the Worker is fixed by WORKER_URL (and allowed by the
+  // page's CSP); the field is only for local runs without a deploy.
+  if (appConfig.workerUrl) s.workerUrl = appConfig.workerUrl;
   return s;
 }
 
@@ -412,6 +414,7 @@ async function generate() {
 
 function init() {
   buildStaticControls();
+  if (appConfig.workerUrl) $('proxy-details').hidden = true;
   const initial = loadSettings();
   fillForm(initial);
   loadBatch(initial);
