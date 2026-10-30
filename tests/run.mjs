@@ -6,6 +6,7 @@ import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createZip, crc32 } from '../site/lib/zip.js';
+import { parseCidr, formatCidr, subtractCidrs, LAN_V4, LAN_V6 } from '../site/lib/cidr.js';
 import { scalarMult, publicKeyFromPrivate, generateKeyPair, toBase64, fromBase64 } from '../site/lib/x25519.js';
 import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName, ENDPOINT_HOSTS, ENDPOINT_PORTS, batchConfigs, batchArchiveName, parseConfigText } from '../site/lib/warp.js';
 
@@ -282,6 +283,76 @@ test('import: errors are explained', () => {
   assert.throws(() => parseConfigText('[Interface]\nPrivateKey = abc\n'), /повреждён/);
   assert.throws(() => parseConfigText('[Interface]\nPrivateKey = IJzeNVFFuCqe0yq5Z59WvW21fy4dofTZixjZ3LJInkE=\n'), /PublicKey/);
   assert.throws(() => parseConfigText('[Interface]\nPrivateKey = IJzeNVFFuCqe0yq5Z59WvW21fy4dofTZixjZ3LJInkE=\n[Peer]\nPublicKey = bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=\n'), /IPv4/);
+});
+
+test('cidr parse/format', () => {
+  for (const c of ['0.0.0.0/0', '10.0.0.0/8', '192.168.1.0/24', '::/0', 'fc00::/7', '2606:4700::1111/128', '2001:db8:0:1::/64'])
+    assert.equal(formatCidr(parseCidr(c)), c);
+  assert.equal(formatCidr(parseCidr('10.1.2.3/8')), '10.0.0.0/8');   // host bits cleared
+  assert.equal(formatCidr(parseCidr('1.2.3.4')), '1.2.3.4/32');
+  for (const bad of ['300.1.1.1/8', '1.2.3/8', '10.0.0.0/33', '::1::2/64', 'fz::/7', 'abc'])
+    assert.equal(parseCidr(bad), null, bad);
+});
+
+test('cidr subtract: no LAN left, nothing else lost (checked by Python ipaddress)', () => {
+  const v4 = subtractCidrs(['0.0.0.0/0'], LAN_V4);
+  const v6 = subtractCidrs(['::/0'], LAN_V6);
+  assert.ok(v4.length <= 48 && v6.length <= 16, `${v4.length} / ${v6.length}`);
+  const py = `import ipaddress,sys,json
+d=json.loads(sys.argv[1])
+for fam,full,lan,res in (('4','0.0.0.0/0',d['lan4'],d['v4']),('6','::/0',d['lan6'],d['v6'])):
+    nets=[ipaddress.ip_network(x) for x in res]
+    lan=[ipaddress.ip_network(x) for x in lan]
+    total=sum(n.num_addresses for n in nets)+sum(n.num_addresses for n in lan)
+    assert total==ipaddress.ip_network(full).num_addresses, (fam,'coverage')
+    assert not any(a.overlaps(b) for i,a in enumerate(nets) for b in nets[i+1:]), (fam,'overlap')
+    assert not any(a.overlaps(b) for a in nets for b in lan), (fam,'lan leak')
+print('ok')`;
+  let out;
+  try {
+    out = execFileSync('python3', ['-I', '-c', py, JSON.stringify({ v4, v6, lan4: LAN_V4, lan6: LAN_V6 })]).toString().trim();
+  } catch (e) {
+    if (e.code === 'ENOENT') return;
+    throw e;
+  }
+  assert.equal(out, 'ok');
+});
+
+test('cidr subtract: partial overlap and unrelated', () => {
+  assert.deepEqual(subtractCidrs(['192.168.0.0/16'], ['192.168.1.0/24']).length, 8);
+  assert.deepEqual(subtractCidrs(['8.8.8.0/24'], LAN_V4), ['8.8.8.0/24']);
+  assert.deepEqual(subtractCidrs(['10.1.0.0/16'], LAN_V4), []);
+  assert.throws(() => subtractCidrs(['nonsense'], LAN_V4), /неверный диапазон/);
+});
+
+test('exclude LAN in config', () => {
+  const reg = parseRegistration(santa);
+  const line = (conf) => conf.split('\n').find((l) => l.startsWith('AllowedIPs = ')).slice(13).split(', ');
+  const on = line(buildConfig(reg, { ...DEFAULT_SETTINGS, excludeLan: true }));
+  assert.ok(on.includes('8.0.0.0/7') && on.includes('11.0.0.0/8') && !on.includes('0.0.0.0/0'));
+  assert.ok(!on.some((x) => x.startsWith('10.') || x.startsWith('192.168.')));
+  assert.ok(on.some((x) => x.includes(':')));
+  const v4only = line(buildConfig(reg, { ...DEFAULT_SETTINGS, excludeLan: true, ipv6: false }));
+  assert.ok(v4only.length > 10 && !v4only.some((x) => x.includes(':')));
+  assert.deepEqual(line(buildConfig(reg, DEFAULT_SETTINGS)), ['0.0.0.0/0', '::/0']);
+});
+
+test('import recognises LAN-excluded AllowedIPs', () => {
+  const reg = parseRegistration(santa);
+  for (const ipv6 of [true, false]) {
+    const { settings } = parseConfigText(buildConfig(reg, { ...DEFAULT_SETTINGS, excludeLan: true, ipv6 }));
+    assert.equal(settings.excludeLan, true);
+    assert.equal(settings.allowedIPs, '0.0.0.0/0, ::/0');
+  }
+  const { settings } = parseConfigText(buildConfig(reg, { ...DEFAULT_SETTINGS, allowedIPs: '8.8.8.8/32, 1.1.1.0/24' }));
+  assert.equal(settings.excludeLan, false);
+  assert.equal(settings.allowedIPs, '8.8.8.8/32, 1.1.1.0/24');
+});
+
+test('AllowedIPs validation', () => {
+  assert.ok(validateSettings({ ...DEFAULT_SETTINGS, allowedIPs: '' }).some((e) => e.includes('Через туннель')));
+  assert.ok(validateSettings({ ...DEFAULT_SETTINGS, allowedIPs: '0.0.0.0/0, oops' }).some((e) => e.includes('oops')));
+  assert.deepEqual(validateSettings({ ...DEFAULT_SETTINGS, allowedIPs: '1.1.1.1, 10.0.0.0/8, ::/0' }), []);
 });
 
 console.log(`\n${passed} tests passed`);

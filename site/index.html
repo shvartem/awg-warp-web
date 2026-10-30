@@ -154,6 +154,12 @@
             <label for="allowedIPs">Через туннель</label>
             <input id="allowedIPs" type="text" spellcheck="false">
           </div>
+          <label class="check">
+            <input type="checkbox" id="excludeLan">
+            <span>Не пускать локальную сеть через туннель
+              <span class="field-note check-note">Роутер, принтер, NAS и Chromecast останутся доступны при включённом туннеле. Из диапазонов выше вычитаются 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, link-local и multicast.</span>
+            </span>
+          </label>
           <div class="grid two">
             <div class="field">
               <label for="mtu">MTU</label>

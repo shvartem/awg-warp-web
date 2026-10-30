@@ -40,6 +40,7 @@ function readForm() {
     dnsPreset: $('dnsPreset').value,
     dns: $('dns').value.trim(),
     allowedIPs: $('allowedIPs').value.trim(),
+    excludeLan: $('excludeLan').checked,
     mtu: Number($('mtu').value),
     keepalive: Number($('keepalive').value),
     ipv6: $('ipv6').checked,
@@ -72,6 +73,7 @@ function fillForm(s) {
   $('dns').value = s.dns;
   updateDnsUi();
   $('allowedIPs').value = s.allowedIPs;
+  $('excludeLan').checked = Boolean(s.excludeLan);
   $('mtu').value = s.mtu;
   $('keepalive').value = s.keepalive;
   $('ipv6').checked = s.ipv6;

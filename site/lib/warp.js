@@ -1,3 +1,5 @@
+import { subtractCidrs, parseCidr, LAN_V4, LAN_V6 } from './cidr.js';
+
 // Pure functions: AmneziaWG defaults for Cloudflare WARP,
 // parsing of registration responses and building the AmneziaWG config text.
 
@@ -29,6 +31,7 @@ export const DEFAULT_SETTINGS = {
   useI1: true,
   I1: DEFAULT_I1,
   ipv6: true,
+  excludeLan: false,
 };
 
 // Public DNS resolvers offered in the UI, grouped by what they filter.
@@ -219,7 +222,20 @@ export function parseConfigText(text) {
       else { settings.dnsPreset = 'custom'; settings.dns = dnsList.join(', '); }
     }
   }
-  if (p.allowedips) settings.allowedIPs = splitList(p.allowedips).join(', ');
+  if (p.allowedips) {
+    const list = splitList(p.allowedips);
+    const same = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+    const noLan = subtractCidrs(['0.0.0.0/0', '::/0'], [...LAN_V4, ...LAN_V6]);
+    let parsed = null;
+    try { parsed = list.map((x) => formatCidrSafe(x)); } catch { /* keep as is */ }
+    if (parsed && (same(parsed, noLan) || same(parsed, noLan.filter((x) => !x.includes(':'))))) {
+      settings.allowedIPs = '0.0.0.0/0, ::/0';
+      settings.excludeLan = true;
+    } else {
+      settings.allowedIPs = list.join(', ');
+      settings.excludeLan = false;
+    }
+  }
   if (p.persistentkeepalive && /^\d+$/.test(p.persistentkeepalive)) settings.keepalive = Number(p.persistentkeepalive);
   settings.ipv6 = Boolean(v6);
 
@@ -235,6 +251,12 @@ export function parseConfigText(text) {
   return { reg, settings, notes };
 }
 
+function formatCidrSafe(x) {
+  const c = parseCidr(x);
+  if (!c) throw new Error('bad cidr');
+  return subtractCidrs([x], [])[0];
+}
+
 function stripMask(a) {
   return String(a).split('/')[0].trim();
 }
@@ -247,12 +269,14 @@ export function buildConfig(reg, s) {
   const address = [`${reg.v4}/32`];
   if (s.ipv6 && reg.v6) address.push(`${reg.v6}/128`);
 
-  let allowed = s.allowedIPs;
+  let allowedList = splitList(s.allowedIPs);
+  if (s.excludeLan) allowedList = subtractCidrs(allowedList, [...LAN_V4, ...LAN_V6]);
   let dns = resolveDns(s);
   if (!s.ipv6) {
-    allowed = splitList(allowed).filter((x) => !x.includes(':')).join(', ') || '0.0.0.0/0';
+    allowedList = allowedList.filter((x) => !x.includes(':'));
     dns = splitList(dns).filter((x) => !x.includes(':')).join(', ') || '1.1.1.1';
   }
+  const allowed = allowedList.join(', ') || '0.0.0.0/0';
 
   const lines = [
     '[Interface]',
@@ -304,6 +328,12 @@ export function validateSettings(s) {
   int('keepalive', 0, 65535);
   if (Number(s.Jmin) > Number(s.Jmax)) errs.push('Jmin не может быть больше Jmax');
   if (!String(s.endpointHost || '').trim()) errs.push('не указан адрес endpoint');
+  const allowedList = splitList(s.allowedIPs);
+  if (!allowedList.length) errs.push('«Через туннель»: укажите хотя бы один диапазон');
+  else {
+    const bad = allowedList.filter((x) => !parseCidr(x));
+    if (bad.length) errs.push(`«Через туннель»: неверный диапазон ${bad.join(', ')}`);
+  }
   if (s.dnsPreset === 'custom' || !DNS_PRESETS.some((p) => p.id === s.dnsPreset)) {
     const list = splitList(s.dns);
     if (!list.length) errs.push('DNS: укажите хотя бы один адрес');
