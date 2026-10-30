@@ -163,6 +163,78 @@ export function parseRegistration(json, ownPrivateKey = null) {
   };
 }
 
+/**
+ * Parses an existing WireGuard/AmneziaWG config text.
+ * Returns { reg, settings, notes }: reg has the same shape as parseRegistration(),
+ * settings holds only the values found in the file, notes lists what was adjusted.
+ * Throws with a Russian message if the essentials are missing.
+ */
+export function parseConfigText(text) {
+  const sections = { interface: {}, peer: {} };
+  let current = null;
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.replace(/\s+#.*$/, '').trim();
+    if (!line || line.startsWith('#') || line.startsWith(';')) continue;
+    const head = line.match(/^\[(\w+)\]$/);
+    if (head) {
+      const name = head[1].toLowerCase();
+      // only the first [Peer] is used
+      current = name === 'interface' || (name === 'peer' && !Object.keys(sections.peer).length) ? name : null;
+      continue;
+    }
+    const kv = line.match(/^([A-Za-z0-9]+)\s*=\s*(.*)$/);
+    if (kv && current) sections[current][kv[1].toLowerCase()] = kv[2].trim();
+  }
+  const i = sections.interface;
+  const p = sections.peer;
+  if (!i.privatekey) throw new Error('В конфиге нет PrivateKey в разделе [Interface]');
+  if (!isValidWgKey(i.privatekey)) throw new Error('PrivateKey в конфиге повреждён');
+  if (!p.publickey || !isValidWgKey(p.publickey)) throw new Error('В конфиге нет PublicKey в разделе [Peer]');
+  const addrs = splitList(i.address || '').map(stripMask);
+  const v4 = addrs.find((a) => !a.includes(':'));
+  const v6 = addrs.find((a) => a.includes(':')) || '';
+  if (!v4) throw new Error('В конфиге нет IPv4-адреса в строке Address');
+
+  const reg = { privateKey: i.privatekey, peerPublicKey: p.publickey, v4, v6, license: '', ports: [], source: 'import' };
+  const settings = {};
+  const notes = [];
+  const num = (k, field = k) => {
+    if (i[k.toLowerCase()] !== undefined && /^\d+$/.test(i[k.toLowerCase()])) settings[field] = Number(i[k.toLowerCase()]);
+  };
+  for (const k of Object.keys(DEFAULT_AWG)) num(k);
+  num('MTU', 'mtu');
+  const isAwg = ['jc', 'h1', 's1'].some((k) => i[k] !== undefined);
+  if (i.i1) { settings.useI1 = true; settings.I1 = i.i1; }
+  else if (isAwg) settings.useI1 = false;
+  if (!isAwg) notes.push('в конфиге нет параметров AmneziaWG, оставлены текущие');
+
+  if (i.dns) {
+    const dnsList = splitList(i.dns);
+    const preset = presetForDns(dnsList.join(', '));
+    if (preset !== 'custom') settings.dnsPreset = preset;
+    else {
+      // same servers without IPv6 → still the preset
+      const v4only = DNS_PRESETS.find((x) => x.servers.filter((s) => !s.includes(':')).join(',') === dnsList.join(','));
+      if (v4only) settings.dnsPreset = v4only.id;
+      else { settings.dnsPreset = 'custom'; settings.dns = dnsList.join(', '); }
+    }
+  }
+  if (p.allowedips) settings.allowedIPs = splitList(p.allowedips).join(', ');
+  if (p.persistentkeepalive && /^\d+$/.test(p.persistentkeepalive)) settings.keepalive = Number(p.persistentkeepalive);
+  settings.ipv6 = Boolean(v6);
+
+  if (p.endpoint) {
+    const m = p.endpoint.match(/^\[?([^\]]+?)\]?:(\d+)$/);
+    if (m) {
+      settings.endpointHost = m[1];
+      const port = Number(m[2]);
+      if (ENDPOINT_PORTS.includes(port)) settings.endpointPort = port;
+      else { settings.endpointPort = 500; notes.push(`порт ${port} не из списка, выбран 500`); }
+    }
+  }
+  return { reg, settings, notes };
+}
+
 function stripMask(a) {
   return String(a).split('/')[0].trim();
 }

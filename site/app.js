@@ -2,7 +2,7 @@ import appConfig from './config.js';
 import { generateKeyPair } from './lib/x25519.js';
 import { createZip } from './lib/zip.js';
 import {
-  DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName,
+  DEFAULT_SETTINGS, ENDPOINT_HOSTS, parseConfigText, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName,
   parseRegistration, buildConfig, validateSettings,
 } from './lib/warp.js';
 
@@ -52,7 +52,8 @@ function readForm() {
 }
 
 function fillForm(s) {
-  document.querySelector(`input[name="mode"][value="${s.mode}"]`).checked = true;
+  (document.querySelector(`input[name="mode"][value="${s.mode}"]`) || document.querySelector('input[name="mode"]')).checked = true;
+  updateModeUi();
 
   const known = ENDPOINT_HOSTS.includes(s.endpointHost);
   $('endpointHost').value = known ? s.endpointHost : CUSTOM;
@@ -130,6 +131,34 @@ function updateDnsUi() {
   $('dnsNote').textContent = preset
     ? `${preset.note} ${preset.servers.filter((x) => !x.includes(':')).join(', ')}`
     : 'Обычные IP-адреса через запятую. DoH и DoT в конфиге WireGuard не поддерживаются.';
+}
+
+// ---------- import of an existing config ----------
+function updateModeUi() {
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  $('importPanel').hidden = mode !== 'import';
+  $('generate').textContent = mode === 'import' ? 'Открыть конфиг' : 'Получить конфиг';
+}
+
+function importConfig() {
+  const text = $('importText').value;
+  if (!text.trim()) throw new Error('Вставьте текст конфига или выберите файл.');
+  const { reg, settings, notes } = parseConfigText(text);
+  fillForm({ ...readForm(), ...settings, mode: 'import' });
+  saveSettings(readForm());
+  return { reg, notes };
+}
+
+async function readImportFile() {
+  const file = $('importFile').files[0];
+  if (!file) return;
+  if (file.size > 64 * 1024) {
+    setStatus('Файл слишком большой для конфига WireGuard.', 'err');
+    return;
+  }
+  $('importText').value = await file.text();
+  $('importFile').value = '';
+  generate();
 }
 
 // ---------- batch of endpoint variants ----------
@@ -262,7 +291,7 @@ function render() {
   currentConfig = buildConfig(registration, s);
   $('config').textContent = currentConfig;
 
-  const src = registration.source === 'local' ? 'ключ создан в этом браузере' : 'ключ создан сервером Santa';
+  const src = { local: 'ключ создан в этом браузере', import: 'ключ из вашего конфига', santa: 'ключ создан сервером Santa' }[registration.source];
   const parts = [src, `адрес ${registration.v4}`];
   if (registration.license) parts.push(`лицензия ${registration.license}`);
   $('result-meta').textContent = parts.join(', ');
@@ -324,10 +353,17 @@ async function generate() {
   const btn = $('generate');
   btn.disabled = true;
   try {
-    registration = s.mode === 'local' ? await registerLocally(s.workerUrl) : await registerViaSanta(s.workerUrl);
+    let done = 'Готово. Конфиг зарегистрирован в Cloudflare WARP.';
+    if (s.mode === 'import') {
+      const { reg, notes } = importConfig();
+      registration = reg;
+      done = 'Конфиг открыт. Меняйте параметры ниже, ключ останется прежним.' + (notes.length ? ` Обратите внимание: ${notes.join('; ')}.` : '');
+    } else {
+      registration = s.mode === 'local' ? await registerLocally(s.workerUrl) : await registerViaSanta(s.workerUrl);
+    }
     $('result').hidden = false;
     render();
-    setStatus('Готово. Конфиг зарегистрирован в Cloudflare WARP.', 'ok');
+    setStatus(done, 'ok');
     $('result').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
   } catch (e) {
     setStatus(e.message || String(e), 'err');
@@ -363,6 +399,8 @@ function init() {
   });
 
   $('generate').addEventListener('click', generate);
+  document.querySelector('.mode').addEventListener('change', () => { updateModeUi(); saveSettings(readForm()); });
+  $('importFile').addEventListener('change', readImportFile);
   $('copy').addEventListener('click', copyConfig);
   $('download').addEventListener('click', downloadConfig);
   $('share').addEventListener('click', shareConfig);

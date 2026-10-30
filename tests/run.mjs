@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createZip, crc32 } from '../site/lib/zip.js';
 import { scalarMult, publicKeyFromPrivate, generateKeyPair, toBase64, fromBase64 } from '../site/lib/x25519.js';
-import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName, ENDPOINT_HOSTS, ENDPOINT_PORTS, batchConfigs, batchArchiveName } from '../site/lib/warp.js';
+import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName, ENDPOINT_HOSTS, ENDPOINT_PORTS, batchConfigs, batchArchiveName, parseConfigText } from '../site/lib/warp.js';
 
 const hex = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
 const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -219,6 +219,69 @@ print(json.dumps({n: z.read(n).decode() for n in z.namelist()}))`;
   }
   assert.deepEqual(Object.keys(out), files.map((f) => f.name));
   for (const f of files) assert.equal(out[f.name], f.text);
+});
+
+test('import: round trip of our own config', () => {
+  const reg = parseRegistration(santa);
+  const s = { ...DEFAULT_SETTINGS, dnsPreset: 'adguard', endpointHost: '188.114.96.23', endpointPort: 2408, Jc: 7, keepalive: 15 };
+  const { reg: r2, settings, notes } = parseConfigText(buildConfig(reg, s));
+  assert.equal(r2.privateKey, reg.privateKey);
+  assert.equal(r2.peerPublicKey, reg.peerPublicKey);
+  assert.equal(r2.v4, '172.16.0.2');
+  assert.equal(r2.v6, reg.v6);
+  assert.equal(r2.source, 'import');
+  assert.deepEqual(notes, []);
+  assert.equal(settings.dnsPreset, 'adguard');
+  assert.equal(settings.endpointHost, '188.114.96.23');
+  assert.equal(settings.endpointPort, 2408);
+  assert.equal(settings.Jc, 7);
+  assert.equal(settings.keepalive, 15);
+  assert.equal(settings.useI1, true);
+  // rebuilding with imported settings gives the same text
+  assert.equal(buildConfig(r2, { ...DEFAULT_SETTINGS, ...settings }), buildConfig(reg, s));
+});
+
+test('import: plain WireGuard config, comments, CRLF, IPv4 only', () => {
+  const text = [
+    '# WARP from somewhere', '[Interface]', 'PrivateKey = IJzeNVFFuCqe0yq5Z59WvW21fy4dofTZixjZ3LJInkE=',
+    'Address = 172.16.0.2/32', 'DNS = 1.1.1.1, 1.0.0.1  # cloudflare', 'MTU = 1280', '',
+    '[Peer]', 'PublicKey = bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=', 'AllowedIPs = 0.0.0.0/0',
+    'Endpoint = engage.cloudflareclient.com:2408',
+  ].join('\r\n');
+  const { reg, settings, notes } = parseConfigText(text);
+  assert.equal(reg.v6, '');
+  assert.equal(settings.ipv6, false);
+  assert.equal(settings.dnsPreset, 'cloudflare'); // IPv4 half of the preset
+  assert.equal(settings.endpointHost, 'engage.cloudflareclient.com');
+  assert.equal(settings.endpointPort, 2408);
+  assert.equal(settings.useI1, undefined);
+  assert.equal(settings.Jc, undefined);
+  assert.equal(notes.length, 1);
+});
+
+test('import: custom DNS, unknown port, IPv6 endpoint', () => {
+  const text = `[Interface]
+PrivateKey = IJzeNVFFuCqe0yq5Z59WvW21fy4dofTZixjZ3LJInkE=
+Address = 172.16.0.2/32, 2606:4700::1/128
+DNS = 10.0.0.53
+Jc = 4
+[Peer]
+PublicKey = bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=
+Endpoint = [2606:4700:d0::a29f:c001]:854`;
+  const { settings, notes } = parseConfigText(text);
+  assert.equal(settings.dnsPreset, 'custom');
+  assert.equal(settings.dns, '10.0.0.53');
+  assert.equal(settings.endpointHost, '2606:4700:d0::a29f:c001');
+  assert.equal(settings.endpointPort, 500);
+  assert.equal(settings.useI1, false); // AWG config without I1
+  assert.ok(notes.some((n) => n.includes('854')));
+});
+
+test('import: errors are explained', () => {
+  assert.throws(() => parseConfigText(''), /PrivateKey/);
+  assert.throws(() => parseConfigText('[Interface]\nPrivateKey = abc\n'), /повреждён/);
+  assert.throws(() => parseConfigText('[Interface]\nPrivateKey = IJzeNVFFuCqe0yq5Z59WvW21fy4dofTZixjZ3LJInkE=\n'), /PublicKey/);
+  assert.throws(() => parseConfigText('[Interface]\nPrivateKey = IJzeNVFFuCqe0yq5Z59WvW21fy4dofTZixjZ3LJInkE=\n[Peer]\nPublicKey = bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=\n'), /IPv4/);
 });
 
 console.log(`\n${passed} tests passed`);

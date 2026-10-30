@@ -24,7 +24,7 @@
     <section class="get" aria-labelledby="get-title">
       <h2 id="get-title" class="visually-hidden">Получение конфига</h2>
       <fieldset class="mode">
-        <legend>Где создать ключ</legend>
+        <legend>Откуда взять ключ</legend>
         <label class="mode-option">
           <input type="radio" name="mode" value="santa" checked>
           <span class="mode-body">
@@ -39,7 +39,26 @@
             <span>Приватный ключ не покидает устройство, Cloudflare получает только публичный. Нужен свой прокси.</span>
           </span>
         </label>
+        <label class="mode-option">
+          <input type="radio" name="mode" value="import">
+          <span class="mode-body">
+            <strong>Свой конфиг</strong>
+            <span>Вставьте готовый конфиг WARP, чтобы поменять DNS, endpoint или обфускацию без новой регистрации.</span>
+          </span>
+        </label>
       </fieldset>
+
+      <div id="importPanel" class="import" hidden>
+        <div class="field">
+          <label for="importText">Текст конфига</label>
+          <textarea id="importText" rows="7" spellcheck="false" autocomplete="off" placeholder="[Interface]&#10;PrivateKey = …&#10;Address = …&#10;&#10;[Peer]&#10;PublicKey = …"></textarea>
+        </div>
+        <div class="import-file">
+          <label for="importFile" class="file-button">Выбрать файл .conf</label>
+          <input id="importFile" type="file" accept=".conf,.txt,text/plain">
+          <span class="field-note">Конфиг разбирается в браузере и никуда не отправляется.</span>
+        </div>
+      </div>
 
       <button type="button" id="generate" class="primary">Получить конфиг</button>
       <p id="status" class="status" role="status" aria-live="polite"></p>
