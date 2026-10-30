@@ -42,6 +42,8 @@ jobs:
             exit 1
           fi
           node -e 'require("fs").writeFileSync("site/config.js", "export default " + JSON.stringify({ workerUrl: process.env.WORKER_URL.replace(/\/+$/, "") }) + ";\n")'
+      - name: Add version to script and style URLs (cache busting)
+        run: node scripts/stamp.mjs site "${GITHUB_SHA::7}"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

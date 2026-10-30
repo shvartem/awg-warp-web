@@ -436,3 +436,4 @@ function pick(obj, keys) {
 }
 
 init();
+window.__appReady = true;
