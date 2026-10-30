@@ -86,12 +86,63 @@ await test('wildcard origin', async () => {
 await test('health without Origin', async () => {
   const r = await worker.fetch(new Request('https://w.example/'), env);
   assert.equal(r.status, 200);
-  assert.deepEqual(await r.json(), { ok: true, santa: true });
+  assert.deepEqual(await r.json(), { ok: true, santa: true, ratelimit: false });
 });
 
 await test('santa still requires allowed Origin', async () => {
   const r = await worker.fetch(new Request('https://w.example/santa'), env);
   assert.equal(r.status, 403);
+});
+
+// Fake Rate Limiting binding: allows `limit` calls per key.
+function fakeLimiter(limit) {
+  const counts = new Map();
+  const calls = [];
+  return {
+    calls,
+    async limit({ key }) {
+      calls.push(key);
+      const c = (counts.get(key) || 0) + 1;
+      counts.set(key, c);
+      return { success: c <= limit };
+    },
+  };
+}
+const withIp = (path, ip, init = {}) => req(path, { ...init, headers: { 'CF-Connecting-IP': ip, ...(init.headers || {}) } });
+const KEY = 'bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=';
+
+await test('rate limit: per IP, per route, 429 with Retry-After', async () => {
+  const rl = fakeLimiter(2);
+  const e = { ...env, RATE_LIMITER: rl };
+  assert.equal((await worker.fetch(withIp('/santa', '1.1.1.1'), e)).status, 200);
+  assert.equal((await worker.fetch(withIp('/santa', '1.1.1.1'), e)).status, 200);
+  const r = await worker.fetch(withIp('/santa', '1.1.1.1'), e);
+  assert.equal(r.status, 429);
+  assert.equal(r.headers.get('Retry-After'), '60');
+  assert.equal(r.headers.get('Access-Control-Allow-Origin'), 'https://me.github.io'); // page can read the 429
+  assert.equal((await worker.fetch(withIp('/santa', '2.2.2.2'), e)).status, 200);  // other IP
+  const reg = await worker.fetch(withIp('/reg', '1.1.1.1', { method: 'POST', body: JSON.stringify({ key: KEY }) }), e);
+  assert.equal(reg.status, 200);                                                    // other route
+  assert.deepEqual(rl.calls.slice(0, 2), ['santa:1.1.1.1', 'santa:1.1.1.1']);
+});
+
+await test('rate limit: not consumed by preflight, health, bad key or foreign origin', async () => {
+  const rl = fakeLimiter(100);
+  const e = { ...env, RATE_LIMITER: rl };
+  await worker.fetch(withIp('/reg', '1.1.1.1', { method: 'OPTIONS' }), e);
+  await worker.fetch(new Request('https://w.example/'), e);
+  await worker.fetch(withIp('/reg', '1.1.1.1', { method: 'POST', body: '{"key":"x"}' }), e);
+  await worker.fetch(new Request('https://w.example/santa', { headers: { Origin: 'https://evil.example' } }), e);
+  assert.equal(rl.calls.length, 0);
+});
+
+await test('rate limit: limiter failure does not block users; health reports binding', async () => {
+  const e = { ...env, RATE_LIMITER: { limit: async () => { throw new Error('boom'); } } };
+  assert.equal((await worker.fetch(withIp('/santa', '1.1.1.1'), e)).status, 200);
+  const h = await (await worker.fetch(new Request('https://w.example/'), e)).json();
+  assert.equal(h.ratelimit, true);
+  const h2 = await (await worker.fetch(new Request('https://w.example/'), env)).json();
+  assert.equal(h2.ratelimit, false);
 });
 
 console.log(`\n${n} worker tests passed`);

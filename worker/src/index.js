@@ -7,6 +7,7 @@
 // Environment (Worker → Settings → Variables and Secrets):
 //   SANTA_URL        secret, required for /santa
 //   ALLOWED_ORIGINS  comma-separated page origins allowed to call the proxy; "*" or unset = any
+// Binding (wrangler.toml): RATE_LIMITER — per-IP limit for /santa and /reg.
 
 // Same values as wgcf (github.com/ViRb3/wgcf, cloudflare/api.go).
 const CF_API = 'https://api.cloudflareclient.com/v0a5641/reg';
@@ -61,6 +62,25 @@ function stripSecrets(data) {
   return data;
 }
 
+// Approximate per-IP, per-route limit (Cloudflare Rate Limiting binding).
+// Returns true when the request may proceed. Without the binding, no limit.
+async function withinLimit(request, env, route) {
+  if (!env.RATE_LIMITER) return true;
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  try {
+    const { success } = await env.RATE_LIMITER.limit({ key: `${route}:${ip}` });
+    return success;
+  } catch {
+    return true; // never block users because the limiter itself failed
+  }
+}
+
+function tooMany(origin) {
+  const res = json({ success: false, errors: [{ message: 'rate limited' }] }, 429, origin);
+  res.headers.set('Retry-After', '60');
+  return res;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -68,7 +88,7 @@ export default {
     // Health check works when the address is opened directly in a browser tab
     // (no Origin header). It reveals nothing but whether config is present.
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
-      return new Response(JSON.stringify({ ok: true, santa: Boolean(env.SANTA_URL) }), {
+      return new Response(JSON.stringify({ ok: true, santa: Boolean(env.SANTA_URL), ratelimit: Boolean(env.RATE_LIMITER) }), {
         headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
       });
     }
@@ -85,6 +105,7 @@ export default {
         if (!env.SANTA_URL) {
           return json({ success: false, errors: [{ message: 'SANTA_URL is not configured on the Worker' }] }, 500, origin);
         }
+        if (!(await withinLimit(request, env, 'santa'))) return tooMany(origin);
         const upstream = await fetch(env.SANTA_URL, {
           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', Accept: 'application/json' },
           cf: { cacheTtl: 0 },
@@ -99,6 +120,7 @@ export default {
         if (!KEY_RE.test(String(key || ''))) {
           return json({ success: false, errors: [{ message: 'invalid public key' }] }, 400, origin);
         }
+        if (!(await withinLimit(request, env, 'reg'))) return tooMany(origin);
         const payload = {
           key,
           install_id: '',

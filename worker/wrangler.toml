@@ -7,3 +7,15 @@ compatibility_date = "2026-10-01"
 #   ALLOWED_ORIGINS  адрес страницы, например https://user.github.io
 # keep_vars не даёт `wrangler deploy` удалить переменные, заданные в панели.
 keep_vars = true
+
+# Ограничение частоты: не больше 10 запросов в минуту с одного IP на маршрут
+# (/santa и /reg считаются отдельно). Лимит приблизительный и считается
+# в каждом дата-центре Cloudflare отдельно. namespace_id — любое число,
+# уникальное в вашем аккаунте Cloudflare.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "4721"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60

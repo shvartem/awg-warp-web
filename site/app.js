@@ -242,6 +242,9 @@ async function fetchJson(url, init = {}, timeoutMs = 30000) {
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { ...init, signal: ctrl.signal, cache: 'no-store' });
+    if (res.status === 429) {
+      throw new Error('Слишком много запросов с вашего адреса. Подождите минуту и попробуйте снова.');
+    }
     const text = await res.text();
     let json;
     try { json = JSON.parse(text); } catch { throw new Error(`сервер ответил не JSON (HTTP ${res.status})`); }
