@@ -175,6 +175,7 @@ test('config file name', () => {
   assert.equal(configFileName(localReg, { ...DEFAULT_SETTINGS, dnsPreset: 'custom' }), 'warp_own_2a.conf');
   assert.equal(configFileName(santaReg, { ...DEFAULT_SETTINGS, dnsPreset: 'adguard-family', endpointHost: '188.114.96.81', endpointPort: 4500 }), 'warp_adgf_10d_s.conf');
   assert.equal(configFileName(santaReg, { ...DEFAULT_SETTINGS, endpointHost: 'engage.cloudflareclient.com', endpointPort: 2408 }), 'warp_cf_1b_s.conf');
+  assert.equal(configFileName(santaReg, { ...DEFAULT_SETTINGS, dnsPreset: 'adguard-family', endpointHost: '188.114.99.224', endpointPort: 4500 }), 'warp_adgf_12d_s.conf');
   assert.equal(configFileName(santaReg, { ...DEFAULT_SETTINGS, endpointHost: '162.159.193.5', endpointPort: '1701' }), 'warp_cf_0c_s.conf');
   assert.equal(new Set(DNS_PRESETS.map((p) => p.tag)).size, DNS_PRESETS.length);
   // every combination satisfies the WireGuard tunnel-name rule
@@ -189,8 +190,8 @@ test('config file name', () => {
 test('batch: one config per host × port, unique names', () => {
   const reg = parseRegistration(santa);
   const files = batchConfigs(reg, DEFAULT_SETTINGS, ENDPOINT_HOSTS, ENDPOINT_PORTS);
-  assert.equal(files.length, 40);
-  assert.equal(new Set(files.map((f) => f.name)).size, 40);
+  assert.equal(files.length, ENDPOINT_HOSTS.length * ENDPOINT_PORTS.length);
+  assert.equal(new Set(files.map((f) => f.name)).size, files.length);
   const f = files.find((x) => x.name === 'warp_cf_3b_s.conf');
   assert.match(f.text, /\nEndpoint = 162\.159\.192\.2:2408\n/);
   assert.ok(files.every((x) => x.text.includes('PrivateKey = ' + reg.privateKey)));

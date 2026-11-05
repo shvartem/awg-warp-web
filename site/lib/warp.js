@@ -76,8 +76,8 @@ export function resolveDns(s) {
 
 // File name, also used by AmneziaWG/WireGuard apps as the tunnel name, which
 // they limit to 15 characters: warp_<dns>_<endpoint>[_s].conf.
-// <endpoint> = host number (1–10 from ENDPOINT_HOSTS, 0 = custom) + port letter
-// (a–d from ENDPOINT_PORTS). Longest: warp_adgf_10d_s.
+// <endpoint> = host number (1–12 from ENDPOINT_HOSTS, 0 = custom) + port letter
+// (a–d from ENDPOINT_PORTS). Longest: warp_adgf_12d_s.
 export function configFileName(reg, s) {
   const preset = DNS_PRESETS.find((p) => p.id === s.dnsPreset);
   const dns = preset ? preset.tag : 'own';
@@ -148,6 +148,8 @@ export const ENDPOINT_HOSTS = [
   '188.114.96.23',
   '188.114.96.50',
   '188.114.96.81',
+  '188.114.96.224',
+  '188.114.99.224',
 ];
 export const ENDPOINT_PORTS = [500, 2408, 1701, 4500];
 
