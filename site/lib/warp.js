@@ -113,6 +113,13 @@ export function deviceEndpoints(n, start = 0) {
   });
 }
 
+export function deviceEndpointIndex(host, port) {
+  const hostIndex = ENDPOINT_HOSTS.indexOf(host);
+  const portIndex = ENDPOINT_PORTS.indexOf(Number(port));
+  if (hostIndex < 0 || portIndex < 0) throw new Error('Неизвестный адрес или порт endpoint');
+  return portIndex * ENDPOINT_HOSTS.length + hostIndex;
+}
+
 export const MAX_DEVICES = 5;
 
 export function hostNumber(host) {
