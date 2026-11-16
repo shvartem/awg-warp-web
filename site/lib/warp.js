@@ -101,14 +101,14 @@ export function batchArchiveName(reg, s) {
   return configFileName(reg, s).replace(/_[0-9]+[a-z](?=(_s)?\.conf$)/, '').replace(/\.conf$/, '.zip');
 }
 
-// Distinct hosts per batch; rotate the port on every assignment and
-// shift the port offset after a complete host cycle to cover all pairs.
+// Distinct hosts per batch; keep the same port for one full host cycle,
+// then move to the next port. Cover all host/port pairs before repeating.
 export function deviceEndpoints(n, start = 0) {
   return Array.from({ length: n }, (_, i) => {
     const index = start + i;
     return {
       host: ENDPOINT_HOSTS[index % ENDPOINT_HOSTS.length],
-      port: ENDPOINT_PORTS[(index + Math.floor(index / ENDPOINT_HOSTS.length)) % ENDPOINT_PORTS.length],
+      port: ENDPOINT_PORTS[Math.floor(index / ENDPOINT_HOSTS.length) % ENDPOINT_PORTS.length],
     };
   });
 }
