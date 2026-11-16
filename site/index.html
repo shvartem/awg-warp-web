@@ -66,6 +66,17 @@
         <p class="field-note">У каждого устройства будет свой ключ: один конфиг нельзя одновременно использовать на двух устройствах.</p>
       </div>
 
+      <details id="endpointStart" class="batch">
+        <summary>Дополнительные настройки перебора</summary>
+        <div class="panel">
+          <p class="panel-note">Для нескольких устройств: адреса перебираются по кругу, порт меняется после полного круга адресов. Позиция сохраняется только до перезагрузки страницы.</p>
+          <p class="field-note">Следующий endpoint: <strong id="nextEndpoint"></strong></p>
+          <div class="field"><label for="startEndpointHost">Начальный адрес</label><select id="startEndpointHost"></select></div>
+          <div class="field"><label for="startEndpointPort">Начальный порт</label><select id="startEndpointPort"></select></div>
+          <div class="actions"><button type="button" id="setEndpointStart">Начать с выбранной позиции</button></div>
+        </div>
+      </details>
+
       <button type="button" id="generate" class="primary">Получить конфиг</button>
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </section>
@@ -139,7 +150,7 @@
         <summary>Сервер Cloudflare (endpoint)</summary>
         <div class="panel">
           <p class="panel-note">Если туннель не подключается, попробуйте другой адрес или порт. Номер адреса и буква порта попадают в имя файла: например, <code>warp_cf_3b_s</code> — адрес 3, порт b.</p>
-          <p id="endpointNote" class="field-note" hidden>Устройств несколько: у каждого свой адрес и порт, они выбраны случайно при регистрации и видны в имени файла.</p>
+          <p id="endpointNote" class="field-note" hidden>Устройств несколько: у каждого свой адрес и порт, они назначены по кругу при регистрации и видны в имени файла.</p>
           <div id="endpointChoice" class="endpoint-choice">
           <div class="field">
             <label for="endpointHost">Адрес</label>
