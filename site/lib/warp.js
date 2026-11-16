@@ -368,7 +368,7 @@ export function validateSettings(s) {
 
 function isIp(x) {
   if (/^(\d{1,3}\.){3}\d{1,3}$/.test(x)) return x.split('.').every((o) => Number(o) <= 255);
-  return x.includes(':') && parseCidr(x) !== null;
+  return x.includes(':') && !x.includes('/') && parseCidr(x) !== null;
 }
 
 export function isValidWgKey(b64) {
