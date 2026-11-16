@@ -3,7 +3,7 @@ import { generateKeyPair } from './lib/x25519.js';
 import { createZip } from './lib/zip.js';
 import { buildUci, isValidIfaceName, DEFAULT_OPENWRT } from './lib/openwrt.js';
 import {
-  DEFAULT_SETTINGS, ENDPOINT_HOSTS, parseConfigText, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName, randomDeviceEndpoints, MAX_DEVICES,
+  DEFAULT_SETTINGS, ENDPOINT_HOSTS, parseConfigText, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName, deviceEndpoints, MAX_DEVICES,
   parseRegistration, buildConfig, validateSettings,
 } from './lib/warp.js';
 
@@ -15,6 +15,7 @@ const AWG_FIELDS = ['Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'H1', 'H2', 'H3', 'H4'];
 let registration = null; // selected device's registration; kept in memory only, never stored
 let registrations = []; // one per device, each with its own key (and port when several)
 let selected = 0;
+let endpointCursor = 0; // in-memory only; reset on page reload
 let canShareZip = false;
 let currentConfig = '';
 
@@ -490,8 +491,9 @@ async function generate() {
       }
       if (!got.length) throw failure;
       if (got.length > 1) {
-        const eps = randomDeviceEndpoints(got.length);
+        const eps = deviceEndpoints(got.length, endpointCursor);
         got.forEach((reg, i) => { reg.host = eps[i].host; reg.port = eps[i].port; });
+        endpointCursor += got.length;
       }
       registrations = got;
       registration = got[0];
