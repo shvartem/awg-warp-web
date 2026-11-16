@@ -359,7 +359,7 @@ test('exclude LAN never silently becomes a default route', () => {
 });
 
 test('custom DNS rejects malformed IPv6 addresses', () => {
-  for (const dns of ['1:2:3', '12345::', '1::2::3', '1:2:3:4:5:6:7:8:9']) {
+  for (const dns of ['1:2:3', '12345::', '1::2::3', '1:2:3:4:5:6:7:8:9', '2001:db8::/64']) {
     assert.ok(validateSettings({ ...DEFAULT_SETTINGS, dnsPreset: 'custom', dns }).some((e) => e.includes('DNS')), dns);
   }
   assert.deepEqual(validateSettings({ ...DEFAULT_SETTINGS, dnsPreset: 'custom', dns: '2001:4860:4860::8888' }), []);
