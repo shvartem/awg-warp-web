@@ -293,7 +293,8 @@ export function buildConfig(reg, s) {
     allowedList = allowedList.filter((x) => !x.includes(':'));
     dns = splitList(dns).filter((x) => !x.includes(':')).join(', ') || '1.1.1.1';
   }
-  const allowed = allowedList.join(', ') || '0.0.0.0/0';
+  if (!allowedList.length) throw new Error('«Через туннель»: после исключения сетей не осталось диапазонов');
+  const allowed = allowedList.join(', ');
 
   const lines = [
     '[Interface]',
@@ -345,6 +346,11 @@ export function validateSettings(s) {
   int('keepalive', 0, 65535);
   if (Number(s.Jmin) > Number(s.Jmax)) errs.push('Jmin не может быть больше Jmax');
   if (!String(s.endpointHost || '').trim()) errs.push('не указан адрес endpoint');
+  if (s.excludeLan && splitList(s.allowedIPs).length && splitList(s.allowedIPs).every((x) => parseCidr(x))) {
+    if (!subtractCidrs(splitList(s.allowedIPs), [...LAN_V4, ...LAN_V6]).some((x) => s.ipv6 || !x.includes(':'))) {
+      errs.push('«Через туннель»: после исключения сетей не осталось диапазонов');
+    }
+  }
   const allowedList = splitList(s.allowedIPs);
   if (!allowedList.length) errs.push('«Через туннель»: укажите хотя бы один диапазон');
   else {
@@ -362,7 +368,7 @@ export function validateSettings(s) {
 
 function isIp(x) {
   if (/^(\d{1,3}\.){3}\d{1,3}$/.test(x)) return x.split('.').every((o) => Number(o) <= 255);
-  return /^[0-9a-f:]+$/i.test(x) && x.includes(':') && (x.match(/::/g) || []).length <= 1;
+  return x.includes(':') && !x.includes('/') && parseCidr(x) !== null;
 }
 
 export function isValidWgKey(b64) {
