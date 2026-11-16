@@ -444,10 +444,14 @@ test('device endpoints: round robin hosts and rotating ports', () => {
   assert.equal(seen.size, total);
   assert.deepEqual(deviceEndpoints(3, 0), [
     { host: ENDPOINT_HOSTS[0], port: ENDPOINT_PORTS[0] },
-    { host: ENDPOINT_HOSTS[1], port: ENDPOINT_PORTS[1] },
-    { host: ENDPOINT_HOSTS[2], port: ENDPOINT_PORTS[2] },
+    { host: ENDPOINT_HOSTS[1], port: ENDPOINT_PORTS[0] },
+    { host: ENDPOINT_HOSTS[2], port: ENDPOINT_PORTS[0] },
   ]);
-  assert.deepEqual(deviceEndpoints(3, 3), deviceEndpoints(5, 0).slice(3));
+  assert.deepEqual(deviceEndpoints(3, 3), deviceEndpoints(6, 0).slice(3));
+  assert.deepEqual(deviceEndpoints(2, ENDPOINT_HOSTS.length - 1), [
+    { host: ENDPOINT_HOSTS.at(-1), port: ENDPOINT_PORTS[0] },
+    { host: ENDPOINT_HOSTS[0], port: ENDPOINT_PORTS[1] },
+  ]);
   assert.deepEqual(deviceEndpoints(3, total), deviceEndpoints(3, 0));
   assert.deepEqual(deviceEndpoints(0, 0), []);
 });
