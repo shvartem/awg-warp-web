@@ -425,31 +425,31 @@ test('openwrt: quotes are escaped, bad names rejected', () => {
   assert.throws(() => buildUci(reg, DEFAULT_SETTINGS, { iface: 'bad name', routeAll: false }), /имя интерфейса/);
 });
 
-test('device endpoints: distinct random hosts, random ports, unique names', () => {
+test('device endpoints: round robin hosts and rotating ports', () => {
   const reg = parseRegistration(santa);
+  const total = ENDPOINT_HOSTS.length * ENDPOINT_PORTS.length;
   const seen = new Set();
-  for (let run = 0; run < 300; run++) {
-    for (let n = 1; n <= MAX_DEVICES; n++) {
-      const eps = randomDeviceEndpoints(n);
-      assert.equal(eps.length, n);
-      assert.equal(new Set(eps.map((e) => e.host)).size, n);
-      for (const e of eps) {
-        assert.ok(ENDPOINT_HOSTS.includes(e.host) && ENDPOINT_PORTS.includes(e.port));
-        seen.add(e.host); seen.add(e.port);
-      }
-      const names = eps.map((e) => configFileName(reg, { ...DEFAULT_SETTINGS, endpointHost: e.host, endpointPort: e.port }));
-      assert.equal(new Set(names).size, n);
+  for (let start = 0; start < total; start++) {
+    const eps = deviceEndpoints(MAX_DEVICES, start);
+    assert.equal(eps.length, MAX_DEVICES);
+    assert.equal(new Set(eps.map((e) => e.host)).size, MAX_DEVICES);
+    for (const e of eps) {
+      assert.ok(ENDPOINT_HOSTS.includes(e.host));
+      assert.ok(ENDPOINT_PORTS.includes(e.port));
+      seen.add(`${e.host}:${e.port}`);
     }
+    const names = eps.map((e) => configFileName(reg, { ...DEFAULT_SETTINGS, endpointHost: e.host, endpointPort: e.port }));
+    assert.equal(new Set(names).size, MAX_DEVICES);
   }
-  // over many runs every host and every port shows up
-  for (const x of [...ENDPOINT_HOSTS, ...ENDPOINT_PORTS]) assert.ok(seen.has(x), String(x));
-});
-
-test('device endpoints: deterministic with injected randomness', () => {
-  const zero = () => 0; // shuffle with j=0 each step, always the first port
-  const eps = randomDeviceEndpoints(3, zero);
-  assert.deepEqual(eps.map((e) => e.port), [500, 500, 500]);
-  assert.equal(new Set(eps.map((e) => e.host)).size, 3);
+  assert.equal(seen.size, total);
+  assert.deepEqual(deviceEndpoints(3, 0), [
+    { host: ENDPOINT_HOSTS[0], port: ENDPOINT_PORTS[0] },
+    { host: ENDPOINT_HOSTS[1], port: ENDPOINT_PORTS[1] },
+    { host: ENDPOINT_HOSTS[2], port: ENDPOINT_PORTS[2] },
+  ]);
+  assert.deepEqual(deviceEndpoints(3, 3), deviceEndpoints(5, 0).slice(3));
+  assert.deepEqual(deviceEndpoints(3, total), deviceEndpoints(3, 0));
+  assert.deepEqual(deviceEndpoints(0, 0), []);
 });
 
 console.log(`\n${passed} tests passed`);
