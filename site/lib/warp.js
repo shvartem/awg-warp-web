@@ -261,8 +261,8 @@ export function parseConfigText(text) {
     if (m) {
       settings.endpointHost = m[1];
       const port = Number(m[2]);
-      if (ENDPOINT_PORTS.includes(port)) settings.endpointPort = port;
-      else { settings.endpointPort = 500; notes.push(`порт ${port} не из списка, выбран 500`); }
+      if (Number.isInteger(port) && port >= 1 && port <= 65535) settings.endpointPort = port;
+      else notes.push(`недопустимый порт ${m[2]}, оставлен порт по умолчанию`);
     }
   }
   return { reg, settings, notes };
