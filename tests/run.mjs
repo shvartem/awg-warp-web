@@ -275,9 +275,20 @@ Endpoint = [2606:4700:d0::a29f:c001]:854`;
   assert.equal(settings.dnsPreset, 'custom');
   assert.equal(settings.dns, '10.0.0.53');
   assert.equal(settings.endpointHost, '2606:4700:d0::a29f:c001');
-  assert.equal(settings.endpointPort, 500);
+  assert.equal(settings.endpointPort, 854);
   assert.equal(settings.useI1, false); // AWG config without I1
-  assert.ok(notes.some((n) => n.includes('854')));
+  assert.ok(!notes.some((n) => n.includes('854')));
+  assert.match(buildConfig(parseRegistration(santa), { ...DEFAULT_SETTINGS, ...settings }), /Endpoint = \[2606:4700:d0::a29f:c001\]:854/);
+});
+
+test('import: preserves arbitrary valid endpoint ports', () => {
+  const reg = parseRegistration(santa);
+  for (const port of [1, 854, 65535]) {
+    const original = buildConfig(reg, { ...DEFAULT_SETTINGS, endpointPort: port });
+    const { settings } = parseConfigText(original);
+    assert.equal(settings.endpointPort, port);
+    assert.match(buildConfig(reg, { ...DEFAULT_SETTINGS, ...settings }), new RegExp(`Endpoint = .*:${port}\\n`));
+  }
 });
 
 test('import: errors are explained', () => {
