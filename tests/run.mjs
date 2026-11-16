@@ -9,7 +9,7 @@ import { createZip, crc32 } from '../site/lib/zip.js';
 import { parseCidr, formatCidr, subtractCidrs, LAN_V4, LAN_V6 } from '../site/lib/cidr.js';
 import { buildUci, isValidIfaceName } from '../site/lib/openwrt.js';
 import { scalarMult, publicKeyFromPrivate, generateKeyPair, toBase64, fromBase64 } from '../site/lib/x25519.js';
-import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName, ENDPOINT_HOSTS, ENDPOINT_PORTS, batchConfigs, batchArchiveName, parseConfigText, randomDeviceEndpoints, MAX_DEVICES } from '../site/lib/warp.js';
+import { parseRegistration, buildConfig, DEFAULT_SETTINGS, validateSettings, isValidWgKey, DNS_GROUPS, DNS_PRESETS, resolveDns, presetForDns, configFileName, ENDPOINT_HOSTS, ENDPOINT_PORTS, batchConfigs, batchArchiveName, parseConfigText, deviceEndpoints, deviceEndpointIndex, MAX_DEVICES } from '../site/lib/warp.js';
 
 const hex = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
 const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -454,6 +454,15 @@ test('device endpoints: round robin hosts and rotating ports', () => {
   ]);
   assert.deepEqual(deviceEndpoints(3, total), deviceEndpoints(3, 0));
   assert.deepEqual(deviceEndpoints(0, 0), []);
+  for (let port = 0; port < ENDPOINT_PORTS.length; port++) {
+    for (let host = 0; host < ENDPOINT_HOSTS.length; host++) {
+      const index = deviceEndpointIndex(ENDPOINT_HOSTS[host], ENDPOINT_PORTS[port]);
+      assert.equal(index, port * ENDPOINT_HOSTS.length + host);
+      assert.deepEqual(deviceEndpoints(1, index)[0], { host: ENDPOINT_HOSTS[host], port: ENDPOINT_PORTS[port] });
+    }
+  }
+  assert.throws(() => deviceEndpointIndex('invalid', 500), /Неизвестный/);
+  assert.throws(() => deviceEndpointIndex(ENDPOINT_HOSTS[0], 9999), /Неизвестный/);
 });
 
 console.log(`\n${passed} tests passed`);
