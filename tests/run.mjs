@@ -351,6 +351,20 @@ test('import recognises LAN-excluded AllowedIPs', () => {
   assert.equal(settings.allowedIPs, '8.8.8.8/32, 1.1.1.0/24');
 });
 
+test('exclude LAN never silently becomes a default route', () => {
+  const s = { ...DEFAULT_SETTINGS, allowedIPs: '10.0.0.0/8', excludeLan: true };
+  assert.ok(validateSettings(s).some((e) => e.includes('не осталось диапазонов')));
+  assert.throws(() => buildConfig(parseRegistration(santa), s), /не осталось диапазонов/);
+  assert.ok(validateSettings({ ...s, allowedIPs: 'fc00::/7', ipv6: false }).some((e) => e.includes('не осталось диапазонов')));
+});
+
+test('custom DNS rejects malformed IPv6 addresses', () => {
+  for (const dns of ['1:2:3', '12345::', '1::2::3', '1:2:3:4:5:6:7:8:9']) {
+    assert.ok(validateSettings({ ...DEFAULT_SETTINGS, dnsPreset: 'custom', dns }).some((e) => e.includes('DNS')), dns);
+  }
+  assert.deepEqual(validateSettings({ ...DEFAULT_SETTINGS, dnsPreset: 'custom', dns: '2001:4860:4860::8888' }), []);
+});
+
 test('AllowedIPs validation', () => {
   assert.ok(validateSettings({ ...DEFAULT_SETTINGS, allowedIPs: '' }).some((e) => e.includes('Через туннель')));
   assert.ok(validateSettings({ ...DEFAULT_SETTINGS, allowedIPs: '0.0.0.0/0, oops' }).some((e) => e.includes('oops')));
