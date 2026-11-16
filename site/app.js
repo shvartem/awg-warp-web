@@ -3,7 +3,7 @@ import { generateKeyPair } from './lib/x25519.js';
 import { createZip } from './lib/zip.js';
 import { buildUci, isValidIfaceName, DEFAULT_OPENWRT } from './lib/openwrt.js';
 import {
-  DEFAULT_SETTINGS, ENDPOINT_HOSTS, parseConfigText, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName, deviceEndpoints, MAX_DEVICES,
+  DEFAULT_SETTINGS, ENDPOINT_HOSTS, parseConfigText, ENDPOINT_PORTS, DNS_GROUPS, DNS_PRESETS, presetForDns, configFileName, hostNumber, portLetter, batchConfigs, batchArchiveName, deviceEndpoints, deviceEndpointIndex, MAX_DEVICES,
   parseRegistration, buildConfig, validateSettings,
 } from './lib/warp.js';
 
@@ -16,8 +16,14 @@ let registration = null; // selected device's registration; kept in memory only,
 let registrations = []; // one per device, each with its own key (and port when several)
 let selected = 0;
 let endpointCursor = 0; // in-memory only; reset on page reload
+const endpointCycleLength = ENDPOINT_HOSTS.length * ENDPOINT_PORTS.length;
 let canShareZip = false;
 let currentConfig = '';
+
+function updateEndpointCursorUi() {
+  const next = deviceEndpoints(1, endpointCursor)[0];
+  $('nextEndpoint').textContent = `${hostNumber(next.host)}. ${next.host}:${next.port}`;
+}
 
 // ---------- settings ----------
 function loadSettings() {
@@ -104,6 +110,12 @@ function buildStaticControls() {
     label.innerHTML = `<input type="radio" name="port" value="${p}"><span>${portLetter(p)}. ${p}</span>`;
     ports.append(label);
   }
+
+  const startHost = $('startEndpointHost');
+  for (const host of ENDPOINT_HOSTS) startHost.add(new Option(`${hostNumber(host)}. ${host}`, host));
+  const startPort = $('startEndpointPort');
+  for (const port of ENDPOINT_PORTS) startPort.add(new Option(String(port), String(port)));
+  updateEndpointCursorUi();
 
   const bh = $('batchHosts');
   for (const h of ENDPOINT_HOSTS) {
@@ -493,7 +505,8 @@ async function generate() {
       if (got.length > 1) {
         const eps = deviceEndpoints(got.length, endpointCursor);
         got.forEach((reg, i) => { reg.host = eps[i].host; reg.port = eps[i].port; });
-        endpointCursor += got.length;
+        endpointCursor = (endpointCursor + got.length) % endpointCycleLength;
+        updateEndpointCursorUi();
       }
       registrations = got;
       registration = got[0];
@@ -530,6 +543,11 @@ function init() {
 
   $('batch').addEventListener('change', onBatchChange);
   $('deviceCount').addEventListener('change', () => { updateModeUi(); saveSettings(readForm()); });
+  $('setEndpointStart').addEventListener('click', () => {
+    endpointCursor = deviceEndpointIndex($('startEndpointHost').value, $('startEndpointPort').value);
+    updateEndpointCursorUi();
+    setStatus('Начальная позиция перебора обновлена.', 'ok');
+  });
   $('deviceList').addEventListener('change', (e) => {
     selected = Number(e.target.value) || 0;
     registration = registrations[selected];
