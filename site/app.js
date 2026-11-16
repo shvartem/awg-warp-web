@@ -40,7 +40,8 @@ function readForm() {
     mode: document.querySelector('input[name="mode"]:checked').value,
     endpointHost: hostSel === CUSTOM ? $('customHost').value.trim() : hostSel,
     customHost: $('customHost').value.trim(),
-    endpointPort: Number(document.querySelector('input[name="port"]:checked')?.value || 500),
+    customPort: $('customPort').value.trim(),
+    endpointPort: Number(document.querySelector('input[name="port"]:checked')?.value === 'custom' ? $('customPort').value : document.querySelector('input[name="port"]:checked')?.value || 500),
     useI1: $('useI1').checked,
     I1: $('I1').value,
     dnsPreset: $('dnsPreset').value,
@@ -70,9 +71,10 @@ function fillForm(s) {
   $('customHost').value = known ? (s.customHost || '') : s.endpointHost;
   $('customHostField').hidden = known;
 
-  const port = document.querySelector(`input[name="port"][value="${s.endpointPort}"]`)
-    || document.querySelector('input[name="port"][value="500"]');
+  const port = document.querySelector(`input[name="port"][value="${s.endpointPort}"]`) || document.querySelector('input[name="port"][value="custom"]');
   port.checked = true;
+  $('customPort').value = ENDPOINT_PORTS.includes(Number(s.endpointPort)) ? (s.customPort || '') : String(s.endpointPort);
+  $('customPortField').hidden = port.value !== 'custom';
 
   for (const f of AWG_FIELDS) $(f).value = s[f];
   $('useI1').checked = s.useI1;
@@ -103,6 +105,10 @@ function buildStaticControls() {
     label.innerHTML = `<input type="radio" name="port" value="${p}"><span>${portLetter(p)}. ${p}</span>`;
     ports.append(label);
   }
+
+  const customLabel = document.createElement('label');
+  customLabel.innerHTML = '<input type="radio" name="port" value="custom"><span>Свой порт…</span>';
+  ports.append(customLabel);
 
   const bh = $('batchHosts');
   for (const h of ENDPOINT_HOSTS) {
@@ -579,6 +585,15 @@ function init() {
       if (!validateSettings(readForm()).length) setStatus('Конфиг пересобран.', 'ok');
     }
   };
+  $('ports').addEventListener('change', () => {
+    const custom = document.querySelector('input[name="port"]:checked')?.value === 'custom';
+    $('customPortField').hidden = !custom;
+    if (custom) $('customPort').focus();
+  });
+  $('customPort').addEventListener('input', () => {
+    document.querySelector('input[name="port"][value="custom"]').checked = true;
+    $('customPortField').hidden = false;
+  });
   document.querySelector('.settings').addEventListener('input', onChange);
   document.querySelector('.settings').addEventListener('change', onChange);
 }
